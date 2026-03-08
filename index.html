@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Program Impact Matrix Generator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #0f1923; color: #ddd; min-height: 100vh; }
+  #root { min-height: 100vh; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useCallback, useRef } = React;
+
+const H2C_CDN = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+const JSPDF_CDN = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+
+const QUADRANT_DESCRIPTIONS = {
+  LHLL: "High impact, low cost programs with partnership opportunity possible and low/no requirement - share costs or in-source for new revenue",
+  LHLH: "Getting higher impact for lower cost - consider if increases would further achieve impact",
+  LHHL: "Fortunate to be in high impact, low cost programs with partnership opportunity possible - share costs or in-source for new revenue",
+  LHHH: "Appear to be of high relevance for the cost, and required - check opportunity to offset mandate with cost recovery, grant funding",
+  HHLL: "Getting impact, costs are high, is there opportunity to share the costs (low reliance), or in-source for $$$",
+  HHLH: "Impact is high, with high price, low/no requirement and customers dependent on us - is there a cost recovery opportunity?",
+  HHHL: "Pursue partnership, regionalization if possible (in-source or merger) to share high cost of highly mandated programs with low reliance",
+  HHHH: "Your unique core, at a cost - is there an opportunity to consider cost recovery? These programs are growing (check demand)",
+  LLLL: "Any opportunity to leverage partners (low reliance) and reallocate resources? In the least, consider in-sourcing for revenue.",
+  LLLH: "Providing a service mainly due to reliance - is there an opportunity to spin off program into non-profit or business, incentivize other entities",
+  LLHL: "Unfunded mandate, other providers: partner or cost recovery",
+  LLHH: "We're mandated, with low alignment and few partners - can we recover costs, or minimize level of service to meet the mandate?",
+  HLLL: "Look for full cost recovery, in-source for rev / partner, consider reducing / eliminating service level, maximize efficiency if essential.",
+  HLLH: "Low impact with high cost, and no (or low) mandate - efficiency, reduce service level, look for full cost recovery or spin off",
+  HLHL: "Mandated, low impact, partner - what does mandate require? Look for full cost recovery, leverage partners, bare min LOS",
+  HLHH: "Unfunded mandates with lower impact and no partner - what does the mandate require (scrutinize service levels), focus lobby efforts",
+};
+
+const OPPORTUNITY_TEXT = {
+  LLLL: "Optimize low-impact services through partnerships and efficient resource reallocation.",
+  LLLH: "Spin off programs to non-profits or private businesses to maintain service levels and reduce government burden.",
+  LLHL: "Meet minimum compliance with mandates while exploring cost recovery options.",
+  LLHH: "Balance mandate requirements and community expectations through cost recovery and efficiency.",
+  HLLL: "Focus on cost recovery and efficiency improvements through in-sourcing and partnerships.",
+  HLLH: "Evaluate service necessity and explore partnerships to manage high costs.",
+  HLHL: "Efficiently meet mandate requirements through strategic adjustments and partnerships.",
+  HLHH: "Manage high-cost mandated services through cost recovery and efficiency improvements.",
+  LHLL: "Enhance significant impact programs at low cost through targeted investments and partnerships.",
+  LHLH: "Increase the effectiveness of high-impact, low-cost programs through partnerships and additional funding.",
+  LHHL: "Maximize community impact while ensuring compliance with mandates.",
+  LHHH: "Maintain and enhance critical high-impact, low-cost services to meet community needs and mandate requirements.",
+  HHLL: "Manage high-cost impactful services through cost-sharing partnerships and cost recovery mechanisms.",
+  HHLH: "Focus on cost management and sustainability for high-cost, high-impact services with high community reliance.",
+  HHHL: "Strategically manage high-cost mandated services through partnerships and cost-saving opportunities.",
+  HHHH: "Ensure the sustainability of critical high-cost, high-impact services through cost recovery, efficiency improvements, and strategic investments.",
+};
+
+const RANGE_PCT = {
+  LLLL: [0.50, 0.60], LLLH: [0.50, 0.60], LLHL: [0.30, 0.40], LLHH: [0.30, 0.40],
+  HLLL: [0.50, 0.70], HLLH: [0.50, 0.70], HLHL: [0.30, 0.40], HLHH: [0.30, 0.40],
+  LHLL: [0.20, 0.40], LHLH: [0.20, 0.40], LHHL: [0.20, 0.40], LHHH: [0.20, 0.40],
+  HHLL: [0.10, 0.15], HHLH: [0.05, 0.10], HHHL: [0.05, 0.10], HHHH: [0.05, 0.10],
+};
+
+const ALL_CODES = ["LLLL","LLLH","LLHL","LLHH","HLLL","HLLH","HLHL","HLHH","LHLL","LHLH","LHHL","LHHH","HHLL","HHLH","HHHL","HHHH"];
+
+const CODE_DESCRIPTIONS = {
+  LLLL: "Low Impact, Low Cost, Low Mandate, Low Reliance",
+  LLLH: "Low Impact, Low Cost, Low Mandate, High Reliance",
+  LLHL: "Low Impact, Low Cost, High Mandate, Low Reliance",
+  LLHH: "Low Impact, Low Cost, High Mandate, High Reliance",
+  HLLL: "Low Impact, High Cost, Low Mandate, Low Reliance",
+  HLLH: "Low Impact, High Cost, Low Mandate, High Reliance",
+  HLHL: "Low Impact, High Cost, High Mandate, Low Reliance",
+  HLHH: "Low Impact, High Cost, High Mandate, High Reliance",
+  LHLL: "High Impact, Low Cost, Low Mandate, Low Reliance",
+  LHLH: "High Impact, Low Cost, Low Mandate, High Reliance",
+  LHHL: "High Impact, Low Cost, High Mandate, Low Reliance",
+  LHHH: "High Impact, Low Cost, High Mandate, High Reliance",
+  HHLL: "High Impact, High Cost, Low Mandate, Low Reliance",
+  HHLH: "High Impact, High Cost, Low Mandate, High Reliance",
+  HHHL: "High Impact, High Cost, High Mandate, Low Reliance",
+  HHHH: "High Impact, High Cost, High Mandate, High Reliance",
+};
+
+function fmt$(n) {
+  if (n == null || isNaN(n)) return "$0";
+  return "$" + Math.round(n).toLocaleString("en-US");
+}
+
+function fmtM(n) {
+  if (n == null || isNaN(n)) return "$0.0M";
+  return "$" + (Math.floor((n / 1000000) * 10) / 10).toFixed(1) + "M";
+}
+
+function SubCell({ code, data, rankInfo, quadColor }) {
+  const count = data?.count || 0;
+  const investment = data?.investment || 0;
+  const rank = rankInfo?.rank || "-";
+  const cat = rankInfo?.cat || "-";
+  const desc = QUADRANT_DESCRIPTIONS[code] || "";
+  const costLabel = code[0] === "H" ? "Higher Cost" : "Low Cost";
+  const impactLabel = code[1] === "H" ? "Higher Impact" : "Low Impact";
+  const mandateLabel = code[2] === "H" ? "High Mandate" : "Low/No Mandate";
+  const relianceLabel = code[3] === "H" ? "High Reliance" : "Low Reliance";
+  const title = impactLabel + ", " + costLabel + ", " + mandateLabel + ", " + relianceLabel;
+
+  return (
+    <div style={{
+      background: "#fff", borderRadius: 3, display: "flex", flexDirection: "column",
+      border: "1px solid " + quadColor + "44", overflow: "hidden", minHeight: 150,
+    }}>
+      <div style={{
+        fontSize: 12, fontWeight: 700, color: "#fff", background: quadColor,
+        padding: "5px 8px", lineHeight: 1.3, textAlign: "center",
+      }}>{title}</div>
+      <div style={{ padding: "8px 10px", display: "flex", flexDirection: "column", flex: 1, gap: 2 }}>
+        <div style={{ fontSize: 10, color: "#666", lineHeight: 1.3, fontStyle: "italic", minHeight: 28 }}>{desc}</div>
+        <div style={{ marginTop: "auto", textAlign: "center" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#111" }}>
+            {count} <span style={{ fontWeight: 400, fontSize: 12, color: "#555" }}>programs</span>
+          </div>
+          <div style={{ fontSize: 12, color: "#222", marginTop: 2, fontWeight: 700 }}>
+            {fmt$(investment)} <span style={{ fontSize: 12, color: "#888" }}>investment</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, borderTop: "1px solid #eee", paddingTop: 4 }}>
+            <span style={{ fontSize: 12, color: "#777", fontWeight: 600 }}>Rank {rank}</span>
+            <span style={{ fontSize: 12, color: "#777", fontWeight: 600 }}>Category {cat}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QuadrantBox({ title, titleColor, bgColor, borderColor, codes, dataByCode, rankData }) {
+  const vlabelInner = {
+    position: "absolute", top: "50%", left: "50%",
+    transform: "translate(-50%, -50%) rotate(-90deg)",
+    fontSize: 8, fontWeight: 700, color: "#333", whiteSpace: "nowrap",
+    letterSpacing: 0.3, textTransform: "uppercase",
+  };
+  return (
+    <div style={{
+      background: bgColor, border: "2px solid " + borderColor, borderRadius: 6,
+      padding: 8, display: "flex", flexDirection: "column", gap: 4,
+    }}>
+      <div style={{ textAlign: "center", fontSize: 13, fontWeight: 800, color: titleColor, letterSpacing: 0.2, padding: "2px 0 4px" }}>{title}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "18px 1fr 1fr", gap: 5, alignItems: "stretch" }}>
+        <div style={{ position: "relative", width: 18, minHeight: 80 }}><div style={vlabelInner}>High Reliance</div></div>
+        <SubCell code={codes[0]} data={dataByCode[codes[0]]} rankInfo={rankData[codes[0]]} quadColor={borderColor} />
+        <SubCell code={codes[1]} data={dataByCode[codes[1]]} rankInfo={rankData[codes[1]]} quadColor={borderColor} />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "18px 1fr 1fr", gap: 5, alignItems: "stretch" }}>
+        <div style={{ position: "relative", width: 18, minHeight: 80 }}><div style={vlabelInner}>Low Reliance</div></div>
+        <SubCell code={codes[2]} data={dataByCode[codes[2]]} rankInfo={rankData[codes[2]]} quadColor={borderColor} />
+        <SubCell code={codes[3]} data={dataByCode[codes[3]]} rankInfo={rankData[codes[3]]} quadColor={borderColor} />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "18px 1fr 1fr", gap: 5 }}>
+        <div />
+        <div style={{ fontSize: 8, color: "#333", fontWeight: 700, letterSpacing: 0.3, textTransform: "uppercase", textAlign: "center" }}>Low/No Mandate</div>
+        <div style={{ fontSize: 8, color: "#333", fontWeight: 700, letterSpacing: 0.3, textTransform: "uppercase", textAlign: "center" }}>Highly Mandated</div>
+      </div>
+    </div>
+  );
+}
+
+function OpportunitiesChart({ matrixData, entityName }) {
+  const { byCode, oppByCode } = matrixData;
+  let totalLow = 0, totalHigh = 0;
+  ALL_CODES.forEach((code) => {
+    const opp = oppByCode[code] || 0;
+    const [pLow, pHigh] = RANGE_PCT[code];
+    totalLow += opp * pLow;
+    totalHigh += opp * pHigh;
+  });
+  const rowColors = ["#f0f7ff", "#ffffff"];
+
+  return (
+    <div style={{ background: "#fff", borderRadius: 10, color: "#111", maxWidth: 1150, margin: "0 auto", padding: 20, overflow: "auto" }}>
+      <h2 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 800 }}>{entityName ? entityName + " — " : ""}Opportunities Chart</h2>
+      <p style={{ margin: "0 0 16px", fontSize: 11, color: "#666" }}>
+        Potential savings and opportunities by category, based on subsidized cost opportunity and category-specific recovery ranges.
+      </p>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+        <thead>
+          <tr style={{ background: "#1a4d80", color: "#fff" }}>
+            <th style={{ padding: "10px 12px", textAlign: "center", fontWeight: 700, width: 70, borderRight: "1px solid #2a6ab0" }}>Category</th>
+            <th style={{ padding: "10px 12px", textAlign: "left", fontWeight: 700, borderRight: "1px solid #2a6ab0" }}>Description</th>
+            <th style={{ padding: "10px 12px", textAlign: "left", fontWeight: 700, borderRight: "1px solid #2a6ab0" }}>Opportunities</th>
+            <th style={{ padding: "10px 12px", textAlign: "center", fontWeight: 700, width: 180 }}>Potential Savings</th>
+          </tr>
+        </thead>
+        <tbody>
+          {ALL_CODES.map((code, i) => {
+            const cat = i + 1;
+            const opp = oppByCode[code] || 0;
+            const [pLow, pHigh] = RANGE_PCT[code];
+            const savingsLow = opp * pLow;
+            const savingsHigh = opp * pHigh;
+            const savingsStr = fmtM(savingsLow) + " to " + fmtM(savingsHigh);
+            return (
+              <tr key={code} style={{ background: rowColors[i % 2], borderBottom: "1px solid #e0e0e0" }}>
+                <td style={{ padding: "10px 12px", textAlign: "center", fontWeight: 700, fontSize: 13, color: "#1a4d80", borderRight: "1px solid #eee" }}>{cat}</td>
+                <td style={{ padding: "10px 12px", color: "#333", borderRight: "1px solid #eee", lineHeight: 1.4 }}>{CODE_DESCRIPTIONS[code]}</td>
+                <td style={{ padding: "10px 12px", color: "#555", borderRight: "1px solid #eee", lineHeight: 1.4, fontStyle: "italic" }}>{OPPORTUNITY_TEXT[code]}</td>
+                <td style={{ padding: "10px 12px", textAlign: "center", fontWeight: 600, color: "#1b6b42", fontSize: 12 }}>{savingsStr}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+        <tfoot>
+          <tr style={{ background: "#1a4d80", color: "#fff" }}>
+            <td colSpan={3} style={{ padding: "12px", fontWeight: 700, fontSize: 13 }}>The sum total of the potential savings ranges from</td>
+            <td style={{ padding: "12px", textAlign: "center", fontWeight: 700, fontSize: 13 }}>{fmtM(totalLow)} to {fmtM(totalHigh)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+
+function App() {
+  const [file1, setFile1] = useState(null);
+  const [file2, setFile2] = useState(null);
+  const [file1Name, setFile1Name] = useState("");
+  const [file2Name, setFile2Name] = useState("");
+  const [matrixData, setMatrixData] = useState(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [entityName, setEntityName] = useState("");
+  const [costThreshold, setCostThreshold] = useState("445000");
+  const [debugInfo, setDebugInfo] = useState("");
+  const [activeTab, setActiveTab] = useState("matrix");
+  const [exporting, setExporting] = useState(false);
+  const matrixRef = useRef(null);
+  const opportunitiesRef = useRef(null);
+
+  const loadScript = (src) => new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[src="' + src + '"]');
+    if (existing) { resolve(); return; }
+    const s = document.createElement("script");
+    s.src = src;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error("Failed to load " + src));
+    document.head.appendChild(s);
+  });
+
+  const getContentRef = () => activeTab === "matrix" ? matrixRef : opportunitiesRef;
+  const getFileName = () => {
+    const prefix = entityName ? entityName.replace(/[^a-zA-Z0-9]/g, "_") : "Report";
+    const suffix = activeTab === "matrix" ? "Impact_Matrix" : "Opportunities_Chart";
+    return prefix + "_" + suffix;
+  };
+
+  const captureAtFixedWidth = async (el) => {
+    await loadScript(H2C_CDN);
+    const wrapper = document.createElement("div");
+    wrapper.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:1200px;z-index:-1;background:#fff;";
+    const clone = el.cloneNode(true);
+    clone.style.width = "1200px";
+    clone.style.maxWidth = "1200px";
+    clone.style.overflow = "visible";
+    wrapper.appendChild(clone);
+    document.body.appendChild(wrapper);
+    await new Promise(r => setTimeout(r, 100));
+    const canvas = await window.html2canvas(clone, { scale: 2, backgroundColor: "#ffffff", useCORS: true, width: 1200 });
+    document.body.removeChild(wrapper);
+    return canvas;
+  };
+
+  const exportPNG = async () => {
+    const el = getContentRef().current;
+    if (!el) return;
+    setExporting(true);
+    try {
+      const canvas = await captureAtFixedWidth(el);
+      const link = document.createElement("a");
+      link.download = getFileName() + ".png";
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+    } catch (err) { console.error("PNG export error:", err); }
+    setExporting(false);
+  };
+
+  const exportPDF = async () => {
+    const el = getContentRef().current;
+    if (!el) return;
+    setExporting(true);
+    try {
+      await loadScript(JSPDF_CDN);
+      const canvas = await captureAtFixedWidth(el);
+      const imgData = canvas.toDataURL("image/png");
+      const { jsPDF } = window.jspdf;
+      const imgW = canvas.width;
+      const imgH = canvas.height;
+      const pdf = new jsPDF({ orientation: "landscape", unit: "pt", format: "letter" });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const margin = 20;
+      const maxW = pageW - margin * 2;
+      const maxH = pageH - margin * 2;
+      const ratio = Math.min(maxW / imgW, maxH / imgH);
+      const w = imgW * ratio;
+      const h = imgH * ratio;
+      const x = (pageW - w) / 2;
+      const y = (pageH - h) / 2;
+      pdf.addImage(imgData, "PNG", x, y, w, h);
+      pdf.save(getFileName() + ".pdf");
+    } catch (err) { console.error("PDF export error:", err); }
+    setExporting(false);
+  };
+
+  const readFile = (file) => new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = (e) => res(new Uint8Array(e.target.result));
+    r.onerror = () => rej(new Error("Failed to read file"));
+    r.readAsArrayBuffer(file);
+  });
+
+  const findCol = (keys, ...searches) => {
+    for (const s of searches) {
+      const found = keys.find(k => k.toLowerCase().trim() === s.toLowerCase());
+      if (found) return found;
+    }
+    for (const s of searches) {
+      const found = keys.find(k => k.toLowerCase().includes(s.toLowerCase()));
+      if (found) return found;
+    }
+    return searches[0];
+  };
+
+  const processData = async () => {
+    if (!file1 || !file2) { setError("Please upload both files."); return; }
+    setLoading(true);
+    setError("");
+    setDebugInfo("");
+
+    try {
+      const debug = [];
+
+      const data1 = await readFile(file1);
+      const wb1 = XLSX.read(data1, { type: "array" });
+      debug.push("File 1 sheets: " + wb1.SheetNames.join(", "));
+      const ws1 = wb1.Sheets[wb1.SheetNames[0]];
+      const rows1 = XLSX.utils.sheet_to_json(ws1, { defval: "" });
+      debug.push("File 1 Tab 1 rows: " + rows1.length);
+
+      const data2 = await readFile(file2);
+      const wb2 = XLSX.read(data2, { type: "array" });
+      debug.push("File 2 sheets: " + wb2.SheetNames.join(", "));
+      if (wb2.SheetNames.length < 2) throw new Error("File 2 needs at least 2 tabs.");
+      const ws2 = wb2.Sheets[wb2.SheetNames[1]];
+      const rows2 = XLSX.utils.sheet_to_json(ws2, { defval: "" });
+      debug.push("File 2 Tab 2 rows: " + rows2.length);
+
+      const cols1 = rows1.length > 0 ? Object.keys(rows1[0]) : [];
+      const cols2 = rows2.length > 0 ? Object.keys(rows2[0]) : [];
+
+      const pidCol1 = findCol(cols1, "program_id");
+      const persCol = findCol(cols1, "Personnel");
+      const nonpersCol = findCol(cols1, "NonPersonnel", "Non-Personnel", "Non Personnel");
+      const quartCol = findCol(cols1, "Quartile", "FinalQuartile", "Final Quartile");
+      const progCol = findCol(cols1, "Program or Service", "Program");
+      const revCol = findCol(cols1, "Revenue");
+
+      const pidCol2 = findCol(cols2, "program_id");
+      const abbrCol = findCol(cols2, "Result Abbr", "Priority Abbr");
+      const scoreCol2 = findCol(cols2, "Final Score");
+
+      debug.push("File 1 column mapping: pid=" + pidCol1 + ", personnel=" + persCol + ", nonpersonnel=" + nonpersCol + ", quartile=" + quartCol + ", program=" + progCol + ", revenue=" + revCol);
+      debug.push("File 2 column mapping: pid=" + pidCol2 + ", abbr=" + abbrCol + ", score=" + scoreCol2);
+
+      const mandateScores = {};
+      const relianceScores = {};
+      rows2.forEach((row) => {
+        const pid = String(row[pidCol2]).trim();
+        const abbr = String(row[abbrCol]).trim();
+        const score = parseFloat(row[scoreCol2]) || 0;
+        if (!pid || pid === "undefined") return;
+        if (abbr === "Mandate") mandateScores[pid] = (mandateScores[pid] || 0) + score;
+        else if (abbr === "Reliance") relianceScores[pid] = (relianceScores[pid] || 0) + score;
+      });
+
+      debug.push("Mandate scores found for " + Object.keys(mandateScores).length + " programs, Reliance for " + Object.keys(relianceScores).length);
+
+      const quartileValues = new Set();
+      rows1.slice(0, 20).forEach(r => { const v = r[quartCol]; if (v !== "" && v != null) quartileValues.add(String(v).trim()); });
+      const sampleQuartiles = Array.from(quartileValues).slice(0, 6);
+      debug.push("Sample quartile values: " + sampleQuartiles.join(", "));
+      const isNumericQuartile = sampleQuartiles.every(v => !isNaN(parseFloat(v)));
+      if (isNumericQuartile) debug.push("Detected NUMERIC quartiles (1=Most, 2=More, 3=Less, 4=Least)");
+
+      const threshold = parseFloat(costThreshold) || 445000;
+      const programs = [];
+
+      rows1.forEach((row) => {
+        const pid = String(row[pidCol1]).trim();
+        const personnel = parseFloat(row[persCol]) || 0;
+        const nonPersonnel = parseFloat(row[nonpersCol]) || 0;
+        const totalCost = personnel + nonPersonnel;
+        const revenue = parseFloat(row[revCol]) || 0;
+        const quartile = String(row[quartCol]).trim();
+        const mScore = mandateScores[pid] || 0;
+        const rScore = relianceScores[pid] || 0;
+
+        if (totalCost === 0) return;
+
+        const costHL = totalCost > threshold ? "H" : "L";
+        let impactHL;
+        if (isNumericQuartile) {
+          const qNum = parseFloat(quartile);
+          impactHL = (qNum === 1 || qNum === 2) ? "H" : "L";
+        } else {
+          impactHL = (quartile === "Most Aligned" || quartile === "More Aligned") ? "H" : "L";
+        }
+        const mandateHL = mScore > 2 ? "H" : "L";
+        const relianceHL = rScore > 2 ? "H" : "L";
+        const code = costHL + impactHL + mandateHL + relianceHL;
+        const revOpp = revenue >= totalCost ? 0 : totalCost - revenue;
+
+        programs.push({ name: row[progCol], pid, totalCost, revenue, revOpp, code });
+      });
+
+      debug.push("Classified: " + programs.length + " programs");
+      if (programs.length === 0) throw new Error("No programs classified.");
+
+      const byCode = {};
+      const oppByCode = {};
+      programs.forEach((p) => {
+        if (!byCode[p.code]) byCode[p.code] = { count: 0, investment: 0 };
+        byCode[p.code].count++;
+        byCode[p.code].investment += p.totalCost;
+        oppByCode[p.code] = (oppByCode[p.code] || 0) + p.revOpp;
+      });
+
+      const catMap = {};
+      ALL_CODES.forEach((c, i) => { catMap[c] = i + 1; });
+      const ranked = ALL_CODES
+        .map(c => ({ code: c, cat: catMap[c], inv: byCode[c]?.investment || 0 }))
+        .sort((a, b) => b.inv - a.inv);
+      const rankData = {};
+      ranked.forEach((item, i) => { rankData[item.code] = { rank: i + 1, cat: item.cat }; });
+
+      const totalPrograms = programs.length;
+      const totalInvestment = programs.reduce((s, p) => s + p.totalCost, 0);
+
+      debug.push("Total: " + totalPrograms + " programs, " + fmt$(totalInvestment));
+      setDebugInfo(debug.join("\n"));
+      setMatrixData({ byCode, rankData, totalPrograms, totalInvestment, oppByCode });
+
+    } catch (err) {
+      setError("Error: " + err.message);
+    }
+    setLoading(false);
+  };
+
+  const reset = () => {
+    setMatrixData(null); setFile1(null); setFile2(null);
+    setFile1Name(""); setFile2Name(""); setError(""); setDebugInfo(""); setActiveTab("matrix");
+  };
+
+  const Q = {
+    hiLo: { bg: "#eaf5f0", border: "#278c5a", title: "#1b6b42" },
+    hiHi: { bg: "#e6eef7", border: "#2260a0", title: "#1a4a78" },
+    loLo: { bg: "#fdf5e0", border: "#b8870a", title: "#7d5d00" },
+    loHi: { bg: "#fce8e8", border: "#bf2a2a", title: "#8e1c1c" },
+  };
+
+  const tabStyle = (active) => ({
+    padding: "10px 24px", fontSize: 13, fontWeight: 700, cursor: "pointer", border: "none",
+    borderBottom: active ? "3px solid #60a5fa" : "3px solid transparent",
+    background: "transparent", color: active ? "#60a5fa" : "#6b8399",
+    transition: "all 0.2s",
+  });
+
+  return (
+    <div style={{ fontFamily: "'Helvetica Neue', Arial, sans-serif", minHeight: "100vh", background: "#0f1923", color: "#ddd" }}>
+      <div style={{ padding: "24px 28px 16px", borderBottom: "1px solid #1e2e3e" }}>
+        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: "#60a5fa" }}>Program Impact Matrix Generator</h1>
+        <p style={{ margin: "4px 0 0", fontSize: 12, color: "#6b8399" }}>Impact vs Cost · Mandate vs Reliance</p>
+      </div>
+
+      {!matrixData && (
+        <div style={{ maxWidth: 640, margin: "32px auto", padding: "0 20px" }}>
+          <div style={{ background: "#162231", border: "1px solid #1e2e3e", borderRadius: 10, padding: 28 }}>
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ fontSize: 11, fontWeight: 600, color: "#7a92a8", display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: 0.8 }}>Entity Name</label>
+              <input type="text" value={entityName} onChange={(e) => setEntityName(e.target.value)} placeholder="e.g. City of Olympia, WA"
+                style={{ width: "100%", padding: "9px 12px", fontSize: 14, borderRadius: 6, border: "1px solid #2a3a4a", background: "#0d1520", color: "#ddd", outline: "none", boxSizing: "border-box" }} />
+            </div>
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ fontSize: 11, fontWeight: 600, color: "#7a92a8", display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: 0.8 }}>Cost Threshold (High/Low)</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input type="number" value={costThreshold} onChange={(e) => setCostThreshold(e.target.value)}
+                  style={{ width: 180, padding: "9px 12px", fontSize: 14, borderRadius: 6, border: "1px solid #2a3a4a", background: "#0d1520", color: "#ddd", outline: "none" }} />
+                <span style={{ fontSize: 10, color: "#556" }}>Default: $445,000</span>
+              </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 24 }}>
+              {[
+                { label: "File 1 — Summary Report", desc: "Tab 1: Programs, Scores, Costs", file: file1, name: file1Name, id: "f1", set: (f) => { setFile1(f); setFile1Name(f.name); } },
+                { label: "File 2 — Program Scores", desc: "Tab 2: Mandate & Reliance Scores", file: file2, name: file2Name, id: "f2", set: (f) => { setFile2(f); setFile2Name(f.name); } },
+              ].map((item) => (
+                <div key={item.id}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: "#7a92a8", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.8 }}>{item.label}</label>
+                  <div style={{
+                    border: "2px dashed " + (item.file ? "#34d399" : "#2a3a4a"), borderRadius: 8, padding: 18,
+                    textAlign: "center", cursor: "pointer", background: item.file ? "rgba(52,211,153,0.06)" : "#0d1520",
+                  }} onClick={() => document.getElementById(item.id).click()}>
+                    <input id={item.id} type="file" accept=".xlsx,.xls" onChange={(e) => { const f = e.target.files[0]; if (f) item.set(f); }} style={{ display: "none" }} />
+                    {item.file
+                      ? <React.Fragment><div style={{ fontSize: 18, color: "#34d399" }}>✓</div><div style={{ fontSize: 11, color: "#34d399", fontWeight: 600, marginTop: 2 }}>{item.name}</div></React.Fragment>
+                      : <React.Fragment><div style={{ fontSize: 22, opacity: 0.35, marginBottom: 2 }}>📊</div><div style={{ fontSize: 10, color: "#556" }}>{item.desc}</div></React.Fragment>
+                    }
+                  </div>
+                </div>
+              ))}
+            </div>
+            {error && <div style={{ color: "#f87171", fontSize: 12, marginBottom: 14, padding: "8px 12px", background: "rgba(248,113,113,0.08)", borderRadius: 6, whiteSpace: "pre-wrap" }}>{error}</div>}
+            <button onClick={processData} disabled={loading || !file1 || !file2}
+              style={{
+                width: "100%", padding: "13px", fontSize: 14, fontWeight: 700, borderRadius: 8, border: "none",
+                cursor: (file1 && file2 && !loading) ? "pointer" : "not-allowed",
+                background: (file1 && file2) ? "linear-gradient(135deg, #2563eb, #10b981)" : "#1e2e3e",
+                color: (file1 && file2) ? "#fff" : "#445", opacity: loading ? 0.6 : 1,
+              }}>
+              {loading ? "Processing..." : "Generate Reports"}
+            </button>
+            {debugInfo && (
+              <details style={{ marginTop: 14 }}>
+                <summary style={{ fontSize: 11, color: "#556", cursor: "pointer" }}>Processing details</summary>
+                <pre style={{ fontSize: 10, color: "#7a92a8", background: "#0d1520", padding: 10, borderRadius: 6, whiteSpace: "pre-wrap", marginTop: 6 }}>{debugInfo}</pre>
+              </details>
+            )}
+          </div>
+        </div>
+      )}
+
+      {matrixData && (
+        <div style={{ padding: "0 20px 40px" }}>
+          <div style={{ maxWidth: 1150, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 0 0", flexWrap: "wrap", gap: 8 }}>
+            <div style={{ display: "flex", gap: 4 }}>
+              <button onClick={() => setActiveTab("matrix")} style={tabStyle(activeTab === "matrix")}>Impact Matrix</button>
+              <button onClick={() => setActiveTab("opportunities")} style={tabStyle(activeTab === "opportunities")}>Opportunities Chart</button>
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <button onClick={exportPNG} disabled={exporting} style={{
+                padding: "7px 16px", fontSize: 11, fontWeight: 600, borderRadius: 5,
+                border: "1px solid #2563eb", background: "#2563eb22", color: "#60a5fa", cursor: "pointer",
+                opacity: exporting ? 0.5 : 1, display: "flex", alignItems: "center", gap: 5,
+              }}>{exporting ? "Exporting..." : "Export PNG"}</button>
+              <button onClick={exportPDF} disabled={exporting} style={{
+                padding: "7px 16px", fontSize: 11, fontWeight: 600, borderRadius: 5,
+                border: "1px solid #10b981", background: "#10b98122", color: "#34d399", cursor: "pointer",
+                opacity: exporting ? 0.5 : 1, display: "flex", alignItems: "center", gap: 5,
+              }}>{exporting ? "Exporting..." : "Export PDF"}</button>
+              <button onClick={reset} style={{
+                padding: "7px 16px", fontSize: 11, fontWeight: 600, borderRadius: 5,
+                border: "1px solid #2a3a4a", background: "#162231", color: "#7a92a8", cursor: "pointer",
+              }}>← Upload New Files</button>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            {activeTab === "matrix" && (
+              <div ref={matrixRef} style={{ background: "#fff", borderRadius: 10, color: "#111", maxWidth: 1150, margin: "0 auto", padding: 16, overflow: "auto" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
+                  <div>
+                    <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#111" }}>{entityName || "Impact Matrix"}</h2>
+                    <div style={{ fontSize: 10, color: "#666", marginTop: 2, lineHeight: 1.5 }}>
+                      <strong>Impact vs Cost</strong> perspective (Bang for the Buck - primary axes)<br />
+                      — with subset dimensions of <strong>Mandate vs Reliance</strong> (span of control dimensions)
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right", fontSize: 10.5, color: "#444" }}>
+                    <div><strong>{matrixData.totalPrograms}</strong> programs under review</div>
+                    <div><strong>{fmt$(matrixData.totalInvestment)}</strong> costs of programs under review</div>
+                    <div style={{ fontSize: 9, color: "#999", marginTop: 1 }}>NOTE: program costs are draft level, in progress (current stage), incomplete</div>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: 0 }}>
+                  <div style={{
+                    position: "relative", minWidth: 28, padding: "0 4px",
+                  }}><div style={{
+                    position: "absolute", top: "50%", left: "50%",
+                    transform: "translate(-50%, -50%) rotate(-90deg)",
+                    fontSize: 15, fontWeight: 900, color: "#1a4d80", letterSpacing: 3,
+                    whiteSpace: "nowrap",
+                  }}>IMPACT &gt;&gt;&gt;</div></div>
+
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "20px 1fr 1fr", gap: 8, marginBottom: 2 }}>
+                      <div />
+                      <div style={{ fontSize: 8, textAlign: "center", color: "#888", fontWeight: 600 }}>Lower Cost</div>
+                      <div style={{ fontSize: 8, textAlign: "center", color: "#888", fontWeight: 600 }}>Higher Cost</div>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "20px 1fr 1fr", gap: 8, marginBottom: 6 }}>
+                      <div style={{ position: "relative", width: 20 }}><div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%) rotate(-90deg)", fontSize: 9, fontWeight: 700, color: "#278c5a", whiteSpace: "nowrap" }}>Higher Impact</div></div>
+                      <QuadrantBox title="High Impact, Low Cost" titleColor={Q.hiLo.title} bgColor={Q.hiLo.bg} borderColor={Q.hiLo.border}
+                        codes={["LHLH", "LHHH", "LHLL", "LHHL"]} dataByCode={matrixData.byCode} rankData={matrixData.rankData} />
+                      <QuadrantBox title="High Impact, High Cost" titleColor={Q.hiHi.title} bgColor={Q.hiHi.bg} borderColor={Q.hiHi.border}
+                        codes={["HHLH", "HHHH", "HHLL", "HHHL"]} dataByCode={matrixData.byCode} rankData={matrixData.rankData} />
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "20px 1fr 1fr", gap: 8 }}>
+                      <div style={{ position: "relative", width: 20 }}><div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%) rotate(-90deg)", fontSize: 9, fontWeight: 700, color: "#b8870a", whiteSpace: "nowrap" }}>Lower Impact</div></div>
+                      <QuadrantBox title="Low Impact, Low Cost" titleColor={Q.loLo.title} bgColor={Q.loLo.bg} borderColor={Q.loLo.border}
+                        codes={["LLLH", "LLHH", "LLLL", "LLHL"]} dataByCode={matrixData.byCode} rankData={matrixData.rankData} />
+                      <QuadrantBox title="Low Impact, High Cost" titleColor={Q.loHi.title} bgColor={Q.loHi.bg} borderColor={Q.loHi.border}
+                        codes={["HLLH", "HLHH", "HLLL", "HLHL"]} dataByCode={matrixData.byCode} rankData={matrixData.rankData} />
+                    </div>
+                    <div style={{ textAlign: "center", marginTop: 10, fontSize: 15, fontWeight: 900, color: "#1a4d80", letterSpacing: 3 }}>COST &gt;&gt;&gt;</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === "opportunities" && (
+              <div ref={opportunitiesRef}>
+                <OpportunitiesChart matrixData={matrixData} entityName={entityName} />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
