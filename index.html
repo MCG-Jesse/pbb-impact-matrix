@@ -330,17 +330,17 @@ function App() {
 
   const captureAtFixedWidth = async (el) => {
     await loadScript(H2C_CDN);
-    const wrapper = document.createElement("div");
-    wrapper.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:1200px;z-index:-1;background:#fff;";
-    const clone = el.cloneNode(true);
-    clone.style.width = "1200px";
-    clone.style.maxWidth = "1200px";
-    clone.style.overflow = "visible";
-    wrapper.appendChild(clone);
-    document.body.appendChild(wrapper);
-    await new Promise(r => setTimeout(r, 100));
-    const canvas = await window.html2canvas(clone, { scale: 2, backgroundColor: "#ffffff", useCORS: true, width: 1200 });
-    document.body.removeChild(wrapper);
+    const origWidth = el.style.width;
+    const origMaxWidth = el.style.maxWidth;
+    const origOverflow = el.style.overflow;
+    el.style.width = "1200px";
+    el.style.maxWidth = "1200px";
+    el.style.overflow = "visible";
+    await new Promise(r => setTimeout(r, 150));
+    const canvas = await window.html2canvas(el, { scale: 2, backgroundColor: "#ffffff", useCORS: true, width: 1200, scrollY: -window.scrollY });
+    el.style.width = origWidth;
+    el.style.maxWidth = origMaxWidth;
+    el.style.overflow = origOverflow;
     return canvas;
   };
 
@@ -383,6 +383,62 @@ function App() {
       pdf.addImage(imgData, "PNG", x, y, w, h);
       pdf.save(getFileName() + ".pdf");
     } catch (err) { console.error("PDF export error:", err); }
+    setExporting(false);
+  };
+
+  const exportExcel = async () => {
+    if (!matrixData) return;
+    setExporting(true);
+    try {
+      const X = window.XLSX;
+      const wb = X.utils.book_new();
+
+      if (activeTab === "matrix") {
+        const rows = ALL_CODES.map((code, i) => ({
+          Category: i + 1,
+          Description: CODE_DESCRIPTIONS[code],
+          Programs: matrixData.byCode[code]?.count || 0,
+          Investment: matrixData.byCode[code]?.investment || 0,
+          Rank: matrixData.rankData[code]?.rank || "",
+        }));
+        const ws = X.utils.json_to_sheet(rows);
+        ws["!cols"] = [{ wch: 10 }, { wch: 50 }, { wch: 12 }, { wch: 18 }, { wch: 8 }];
+        X.utils.book_append_sheet(wb, ws, "Impact Matrix");
+
+      } else if (activeTab === "opportunities") {
+        const rows = ALL_CODES.map((code, i) => {
+          const opp = matrixData.oppByCode[code] || 0;
+          const [pLow, pHigh] = RANGE_PCT[code];
+          return {
+            Category: i + 1,
+            Description: CODE_DESCRIPTIONS[code],
+            Opportunities: OPPORTUNITY_TEXT[code],
+            "Savings Low": opp * pLow,
+            "Savings High": opp * pHigh,
+          };
+        });
+        const ws = X.utils.json_to_sheet(rows);
+        ws["!cols"] = [{ wch: 10 }, { wch: 50 }, { wch: 60 }, { wch: 16 }, { wch: 16 }];
+        X.utils.book_append_sheet(wb, ws, "Opportunities");
+
+      } else if (activeTab === "programs") {
+        const { programs, catMap } = matrixData;
+        const rows = programs
+          .map(p => ({
+            Category: catMap[p.code] || 0,
+            Program: p.name,
+            Description: p.desc,
+            "Total Cost": p.totalCost,
+            "Category Description": CODE_DESCRIPTIONS[p.code] || "",
+          }))
+          .sort((a, b) => a.Category - b.Category);
+        const ws = X.utils.json_to_sheet(rows);
+        ws["!cols"] = [{ wch: 10 }, { wch: 30 }, { wch: 60 }, { wch: 16 }, { wch: 50 }];
+        X.utils.book_append_sheet(wb, ws, "Program Details");
+      }
+
+      X.writeFile(wb, getFileName() + ".xlsx");
+    } catch (err) { console.error("Excel export error:", err); }
     setExporting(false);
   };
 
@@ -443,12 +499,16 @@ function App() {
       const pidCol2 = findCol(cols2, "program_id");
       const abbrCol = findCol(cols2, "Result Abbr", "Priority Abbr");
       const scoreCol2 = findCol(cols2, "Final Score");
+      const descCol2 = findCol(cols2, "Program or Service Description", "Program Description", "Description");
 
-      debug.push("File 1 column mapping: pid=" + pidCol1 + ", personnel=" + persCol + ", nonpersonnel=" + nonpersCol + ", quartile=" + quartCol + ", program=" + progCol + ", revenue=" + revCol);
-      debug.push("File 2 column mapping: pid=" + pidCol2 + ", abbr=" + abbrCol + ", score=" + scoreCol2);
+      const hasDescInFile1 = cols1.some(c => c.toLowerCase().includes("description"));
+      debug.push("File 1 has description column: " + hasDescInFile1);
+      debug.push("File 1 column mapping: pid=" + pidCol1 + ", personnel=" + persCol + ", nonpersonnel=" + nonpersCol + ", quartile=" + quartCol + ", program=" + progCol + ", desc=" + descCol + ", revenue=" + revCol);
+      debug.push("File 2 column mapping: pid=" + pidCol2 + ", abbr=" + abbrCol + ", score=" + scoreCol2 + ", desc=" + descCol2);
 
       const mandateScores = {};
       const relianceScores = {};
+      const descriptionsFromFile2 = {};
       rows2.forEach((row) => {
         const pid = String(row[pidCol2]).trim();
         const abbr = String(row[abbrCol]).trim();
@@ -456,6 +516,10 @@ function App() {
         if (!pid || pid === "undefined") return;
         if (abbr === "Mandate") mandateScores[pid] = (mandateScores[pid] || 0) + score;
         else if (abbr === "Reliance") relianceScores[pid] = (relianceScores[pid] || 0) + score;
+        if (!descriptionsFromFile2[pid]) {
+          const d = String(row[descCol2] || "").trim();
+          if (d) descriptionsFromFile2[pid] = d;
+        }
       });
 
       debug.push("Mandate scores found for " + Object.keys(mandateScores).length + " programs, Reliance for " + Object.keys(relianceScores).length);
@@ -495,7 +559,10 @@ function App() {
         const code = costHL + impactHL + mandateHL + relianceHL;
         const revOpp = revenue >= totalCost ? 0 : totalCost - revenue;
 
-        programs.push({ name: row[progCol], desc: row[descCol] || "", pid, totalCost, revenue, revOpp, code });
+        const descFromFile1 = hasDescInFile1 ? String(row[descCol] || "").trim() : "";
+        const desc = descFromFile1 || descriptionsFromFile2[pid] || "";
+
+        programs.push({ name: row[progCol], desc, pid, totalCost, revenue, revOpp, code });
       });
 
       debug.push("Classified: " + programs.length + " programs");
@@ -632,6 +699,11 @@ function App() {
                 border: "1px solid #10b981", background: "#10b98122", color: "#34d399", cursor: "pointer",
                 opacity: exporting ? 0.5 : 1, display: "flex", alignItems: "center", gap: 5,
               }}>{exporting ? "Exporting..." : "Export PDF"}</button>
+              <button onClick={exportExcel} disabled={exporting} style={{
+                padding: "7px 16px", fontSize: 11, fontWeight: 600, borderRadius: 5,
+                border: "1px solid #f59e0b", background: "#f59e0b22", color: "#fbbf24", cursor: "pointer",
+                opacity: exporting ? 0.5 : 1, display: "flex", alignItems: "center", gap: 5,
+              }}>{exporting ? "Exporting..." : "Export Excel"}</button>
               <button onClick={reset} style={{
                 padding: "7px 16px", fontSize: 11, fontWeight: 600, borderRadius: 5,
                 border: "1px solid #2a3a4a", background: "#162231", color: "#7a92a8", cursor: "pointer",
