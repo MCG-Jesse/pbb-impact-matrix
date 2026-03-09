@@ -225,6 +225,75 @@ function OpportunitiesChart({ matrixData, entityName }) {
   );
 }
 
+function ProgramList({ matrixData, entityName }) {
+  const { programs, catMap } = matrixData;
+  const [sortCol, setSortCol] = useState("cat");
+  const [sortAsc, setSortAsc] = useState(true);
+  const [filterCat, setFilterCat] = useState("all");
+
+  const handleSort = (col) => {
+    if (sortCol === col) setSortAsc(!sortAsc);
+    else { setSortCol(col); setSortAsc(true); }
+  };
+
+  const enriched = programs.map(p => ({ ...p, cat: catMap[p.code] || 0, codeDesc: CODE_DESCRIPTIONS[p.code] || "" }));
+  const filtered = filterCat === "all" ? enriched : enriched.filter(p => String(p.cat) === filterCat);
+  const sorted = [...filtered].sort((a, b) => {
+    let cmp = 0;
+    if (sortCol === "name") cmp = (a.name || "").localeCompare(b.name || "");
+    else if (sortCol === "cost") cmp = a.totalCost - b.totalCost;
+    else if (sortCol === "cat") cmp = a.cat - b.cat;
+    return sortAsc ? cmp : -cmp;
+  });
+
+  const arrow = (col) => sortCol === col ? (sortAsc ? " ▲" : " ▼") : "";
+  const thStyle = { padding: "10px 12px", textAlign: "left", fontWeight: 700, cursor: "pointer", borderRight: "1px solid #2a6ab0", userSelect: "none" };
+  const rowColors = ["#f0f7ff", "#ffffff"];
+  const cats = [...new Set(enriched.map(p => p.cat))].sort((a, b) => a - b);
+
+  return (
+    <div style={{ background: "#fff", borderRadius: 10, color: "#111", maxWidth: 1150, margin: "0 auto", padding: 20, overflow: "auto" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
+        <div>
+          <h2 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 800 }}>{entityName ? entityName + " — " : ""}Program Details</h2>
+          <p style={{ margin: 0, fontSize: 11, color: "#666" }}>
+            {sorted.length} programs{filterCat !== "all" ? " in Category " + filterCat : ""} · Total: {fmt$(sorted.reduce((s, p) => s + p.totalCost, 0))}
+          </p>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <label style={{ fontSize: 11, color: "#666", fontWeight: 600 }}>Filter by Category:</label>
+          <select value={filterCat} onChange={(e) => setFilterCat(e.target.value)} style={{
+            padding: "6px 10px", fontSize: 12, borderRadius: 5, border: "1px solid #ccc", background: "#fff", color: "#333",
+          }}>
+            <option value="all">All Categories</option>
+            {cats.map(c => <option key={c} value={String(c)}>Category {c}</option>)}
+          </select>
+        </div>
+      </div>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+        <thead>
+          <tr style={{ background: "#1a4d80", color: "#fff" }}>
+            <th style={{ ...thStyle, width: 70, textAlign: "center" }} onClick={() => handleSort("cat")}>{"Cat" + arrow("cat")}</th>
+            <th style={{ ...thStyle, width: 200 }} onClick={() => handleSort("name")}>{"Program" + arrow("name")}</th>
+            <th style={thStyle}>Description</th>
+            <th style={{ ...thStyle, width: 130, textAlign: "right", borderRight: "none" }} onClick={() => handleSort("cost")}>{"Total Cost" + arrow("cost")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((p, i) => (
+            <tr key={p.pid + "-" + i} style={{ background: rowColors[i % 2], borderBottom: "1px solid #e0e0e0" }}>
+              <td style={{ padding: "10px 12px", textAlign: "center", fontWeight: 700, fontSize: 13, color: "#1a4d80", borderRight: "1px solid #eee" }}>{p.cat}</td>
+              <td style={{ padding: "10px 12px", color: "#222", fontWeight: 600, borderRight: "1px solid #eee" }}>{p.name}</td>
+              <td style={{ padding: "10px 12px", color: "#555", lineHeight: 1.4, borderRight: "1px solid #eee", fontSize: 11 }}>{p.desc}</td>
+              <td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600, color: "#222" }}>{fmt$(p.totalCost)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function App() {
   const [file1, setFile1] = useState(null);
   const [file2, setFile2] = useState(null);
@@ -240,6 +309,7 @@ function App() {
   const [exporting, setExporting] = useState(false);
   const matrixRef = useRef(null);
   const opportunitiesRef = useRef(null);
+  const programsRef = useRef(null);
 
   const loadScript = (src) => new Promise((resolve, reject) => {
     const existing = document.querySelector('script[src="' + src + '"]');
@@ -251,10 +321,10 @@ function App() {
     document.head.appendChild(s);
   });
 
-  const getContentRef = () => activeTab === "matrix" ? matrixRef : opportunitiesRef;
+  const getContentRef = () => activeTab === "matrix" ? matrixRef : activeTab === "opportunities" ? opportunitiesRef : programsRef;
   const getFileName = () => {
     const prefix = entityName ? entityName.replace(/[^a-zA-Z0-9]/g, "_") : "Report";
-    const suffix = activeTab === "matrix" ? "Impact_Matrix" : "Opportunities_Chart";
+    const suffix = activeTab === "matrix" ? "Impact_Matrix" : activeTab === "opportunities" ? "Opportunities_Chart" : "Program_Details";
     return prefix + "_" + suffix;
   };
 
@@ -367,6 +437,7 @@ function App() {
       const nonpersCol = findCol(cols1, "NonPersonnel", "Non-Personnel", "Non Personnel");
       const quartCol = findCol(cols1, "Quartile", "FinalQuartile", "Final Quartile");
       const progCol = findCol(cols1, "Program or Service", "Program");
+      const descCol = findCol(cols1, "Program or Service Description", "Program Description", "Description");
       const revCol = findCol(cols1, "Revenue");
 
       const pidCol2 = findCol(cols2, "program_id");
@@ -424,7 +495,7 @@ function App() {
         const code = costHL + impactHL + mandateHL + relianceHL;
         const revOpp = revenue >= totalCost ? 0 : totalCost - revenue;
 
-        programs.push({ name: row[progCol], pid, totalCost, revenue, revOpp, code });
+        programs.push({ name: row[progCol], desc: row[descCol] || "", pid, totalCost, revenue, revOpp, code });
       });
 
       debug.push("Classified: " + programs.length + " programs");
@@ -452,7 +523,7 @@ function App() {
 
       debug.push("Total: " + totalPrograms + " programs, " + fmt$(totalInvestment));
       setDebugInfo(debug.join("\n"));
-      setMatrixData({ byCode, rankData, totalPrograms, totalInvestment, oppByCode });
+      setMatrixData({ byCode, rankData, totalPrograms, totalInvestment, oppByCode, programs, catMap });
 
     } catch (err) {
       setError("Error: " + err.message);
@@ -548,6 +619,7 @@ function App() {
             <div style={{ display: "flex", gap: 4 }}>
               <button onClick={() => setActiveTab("matrix")} style={tabStyle(activeTab === "matrix")}>Impact Matrix</button>
               <button onClick={() => setActiveTab("opportunities")} style={tabStyle(activeTab === "opportunities")}>Opportunities Chart</button>
+              <button onClick={() => setActiveTab("programs")} style={tabStyle(activeTab === "programs")}>Program Details</button>
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <button onClick={exportPNG} disabled={exporting} style={{
@@ -624,6 +696,12 @@ function App() {
             {activeTab === "opportunities" && (
               <div ref={opportunitiesRef}>
                 <OpportunitiesChart matrixData={matrixData} entityName={entityName} />
+              </div>
+            )}
+
+            {activeTab === "programs" && (
+              <div ref={programsRef}>
+                <ProgramList matrixData={matrixData} entityName={entityName} />
               </div>
             )}
           </div>
