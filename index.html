@@ -6,7 +6,7 @@
 <title>Program Impact Matrix Generator</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #0f1923; color: #ddd; min-height: 100vh; }
+  body { font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; background: #F5F6F8; color: #1A1A2E; min-height: 100vh; }
   #root { min-height: 100vh; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
@@ -19,8 +19,18 @@
 <script type="text/babel">
 const { useState, useCallback, useRef } = React;
 
+
+
+const XLSX_CDN = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
 const H2C_CDN = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
 const JSPDF_CDN = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+
+// Tyler Tech colors
+const TY = {
+  navy: "#003B5C", blue: "#0076D6", orange: "#F2682A", lightGray: "#F5F6F8",
+  border: "#E0E4E8", text: "#1A1A2E", textLight: "#5A6577", white: "#FFFFFF",
+  green: "#1B8A5A", red: "#C53030", yellow: "#B8870A",
+};
 
 const QUADRANT_DESCRIPTIONS = {
   LHLL: "High impact, low cost programs with partnership opportunity possible and low/no requirement - share costs or in-source for new revenue",
@@ -90,12 +100,12 @@ const CODE_DESCRIPTIONS = {
 
 function fmt$(n) {
   if (n == null || isNaN(n)) return "$0";
-  return "$" + Math.round(n).toLocaleString("en-US");
+  return "$" + Math.round(Math.max(0, n)).toLocaleString("en-US");
 }
 
 function fmtM(n) {
   if (n == null || isNaN(n)) return "$0.0M";
-  return "$" + (Math.floor((n / 1000000) * 10) / 10).toFixed(1) + "M";
+  return "$" + (Math.floor((Math.max(0, n) / 1000000) * 10) / 10).toFixed(1) + "M";
 }
 
 function SubCell({ code, data, rankInfo, quadColor }) {
@@ -108,29 +118,30 @@ function SubCell({ code, data, rankInfo, quadColor }) {
   const impactLabel = code[1] === "H" ? "Higher Impact" : "Low Impact";
   const mandateLabel = code[2] === "H" ? "High Mandate" : "Low/No Mandate";
   const relianceLabel = code[3] === "H" ? "High Reliance" : "Low Reliance";
-  const title = impactLabel + ", " + costLabel + ", " + mandateLabel + ", " + relianceLabel;
+  const title = `${impactLabel}, ${costLabel}, ${mandateLabel}, ${relianceLabel}`;
 
   return (
     <div style={{
-      background: "#fff", borderRadius: 3, display: "flex", flexDirection: "column",
-      border: "1px solid " + quadColor + "44", overflow: "hidden", minHeight: 150,
+      background: TY.white, borderRadius: 4, display: "flex", flexDirection: "column",
+      border: `1px solid ${quadColor}33`, overflow: "hidden", minHeight: 150,
+      boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
     }}>
       <div style={{
-        fontSize: 12, fontWeight: 700, color: "#fff", background: quadColor,
+        fontSize: 12, fontWeight: 700, color: TY.white, background: quadColor,
         padding: "5px 8px", lineHeight: 1.3, textAlign: "center",
       }}>{title}</div>
       <div style={{ padding: "8px 10px", display: "flex", flexDirection: "column", flex: 1, gap: 2 }}>
-        <div style={{ fontSize: 10, color: "#666", lineHeight: 1.3, fontStyle: "italic", minHeight: 28 }}>{desc}</div>
+        <div style={{ fontSize: 10, color: TY.textLight, lineHeight: 1.3, fontStyle: "italic", minHeight: 28 }}>{desc}</div>
         <div style={{ marginTop: "auto", textAlign: "center" }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#111" }}>
-            {count} <span style={{ fontWeight: 400, fontSize: 12, color: "#555" }}>programs</span>
+          <div style={{ fontSize: 12, fontWeight: 700, color: TY.text }}>
+            {count} <span style={{ fontWeight: 400, color: TY.textLight }}>programs</span>
           </div>
-          <div style={{ fontSize: 12, color: "#222", marginTop: 2, fontWeight: 700 }}>
-            {fmt$(investment)} <span style={{ fontSize: 12, color: "#888" }}>investment</span>
+          <div style={{ fontSize: 12, color: TY.text, marginTop: 2, fontWeight: 700 }}>
+            {fmt$(investment)} <span style={{ color: TY.textLight }}>subsidized cost</span>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, borderTop: "1px solid #eee", paddingTop: 4 }}>
-            <span style={{ fontSize: 12, color: "#777", fontWeight: 600 }}>Rank {rank}</span>
-            <span style={{ fontSize: 12, color: "#777", fontWeight: 600 }}>Category {cat}</span>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, borderTop: `1px solid ${TY.border}`, paddingTop: 4 }}>
+            <span style={{ fontSize: 12, color: TY.textLight, fontWeight: 600 }}>Rank {rank}</span>
+            <span style={{ fontSize: 12, color: TY.textLight, fontWeight: 600 }}>Category {cat}</span>
           </div>
         </div>
       </div>
@@ -142,15 +153,16 @@ function QuadrantBox({ title, titleColor, bgColor, borderColor, codes, dataByCod
   const vlabelInner = {
     position: "absolute", top: "50%", left: "50%",
     transform: "translate(-50%, -50%) rotate(-90deg)",
-    fontSize: 8, fontWeight: 700, color: "#333", whiteSpace: "nowrap",
+    fontSize: 8, fontWeight: 700, color: TY.text, whiteSpace: "nowrap",
     letterSpacing: 0.3, textTransform: "uppercase",
   };
   return (
     <div style={{
-      background: bgColor, border: "2px solid " + borderColor, borderRadius: 6,
+      background: bgColor, border: `2px solid ${borderColor}`, borderRadius: 6,
       padding: 8, display: "flex", flexDirection: "column", gap: 4,
+      boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
     }}>
-      <div style={{ textAlign: "center", fontSize: 13, fontWeight: 800, color: titleColor, letterSpacing: 0.2, padding: "2px 0 4px" }}>{title}</div>
+      <div style={{ textAlign: "center", fontSize: 14, fontWeight: 800, color: titleColor, letterSpacing: 0.2, padding: "2px 0 4px" }}>{title}</div>
       <div style={{ display: "grid", gridTemplateColumns: "18px 1fr 1fr", gap: 5, alignItems: "stretch" }}>
         <div style={{ position: "relative", width: 18, minHeight: 80 }}><div style={vlabelInner}>High Reliance</div></div>
         <SubCell code={codes[0]} data={dataByCode[codes[0]]} rankInfo={rankData[codes[0]]} quadColor={borderColor} />
@@ -163,15 +175,15 @@ function QuadrantBox({ title, titleColor, bgColor, borderColor, codes, dataByCod
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "18px 1fr 1fr", gap: 5 }}>
         <div />
-        <div style={{ fontSize: 8, color: "#333", fontWeight: 700, letterSpacing: 0.3, textTransform: "uppercase", textAlign: "center" }}>Low/No Mandate</div>
-        <div style={{ fontSize: 8, color: "#333", fontWeight: 700, letterSpacing: 0.3, textTransform: "uppercase", textAlign: "center" }}>Highly Mandated</div>
+        <div style={{ fontSize: 8, color: TY.text, fontWeight: 700, letterSpacing: 0.3, textTransform: "uppercase", textAlign: "center" }}>Low/No Mandate</div>
+        <div style={{ fontSize: 8, color: TY.text, fontWeight: 700, letterSpacing: 0.3, textTransform: "uppercase", textAlign: "center" }}>Highly Mandated</div>
       </div>
     </div>
   );
 }
 
 function OpportunitiesChart({ matrixData, entityName }) {
-  const { byCode, oppByCode } = matrixData;
+  const { oppByCode } = matrixData;
   let totalLow = 0, totalHigh = 0;
   ALL_CODES.forEach((code) => {
     const opp = oppByCode[code] || 0;
@@ -179,43 +191,38 @@ function OpportunitiesChart({ matrixData, entityName }) {
     totalLow += opp * pLow;
     totalHigh += opp * pHigh;
   });
-  const rowColors = ["#f0f7ff", "#ffffff"];
 
   return (
-    <div style={{ background: "#fff", borderRadius: 10, color: "#111", maxWidth: 1150, margin: "0 auto", padding: 20, overflow: "auto" }}>
-      <h2 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 800 }}>{entityName ? entityName + " — " : ""}Opportunities Chart</h2>
-      <p style={{ margin: "0 0 16px", fontSize: 11, color: "#666" }}>
-        Potential savings and opportunities by category, based on subsidized cost opportunity and category-specific recovery ranges.
+    <div style={{ background: TY.white, borderRadius: 8, color: TY.text, maxWidth: 1150, margin: "0 auto", padding: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
+      <h2 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 800, color: TY.navy }}>{entityName ? `${entityName} — ` : ""}Opportunities Chart</h2>
+      <p style={{ margin: "0 0 16px", fontSize: 12, color: TY.textLight }}>
+        Potential savings by category based on subsidized cost and category-specific recovery ranges.
       </p>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
         <thead>
-          <tr style={{ background: "#1a4d80", color: "#fff" }}>
-            <th style={{ padding: "10px 12px", textAlign: "center", fontWeight: 700, width: 70, borderRight: "1px solid #2a6ab0" }}>Category</th>
-            <th style={{ padding: "10px 12px", textAlign: "left", fontWeight: 700, borderRight: "1px solid #2a6ab0" }}>Description</th>
-            <th style={{ padding: "10px 12px", textAlign: "left", fontWeight: 700, borderRight: "1px solid #2a6ab0" }}>Opportunities</th>
+          <tr style={{ background: TY.navy, color: TY.white }}>
+            <th style={{ padding: "10px 12px", textAlign: "center", fontWeight: 700, width: 70, borderRight: "1px solid #1a5a7a" }}>Category</th>
+            <th style={{ padding: "10px 12px", textAlign: "left", fontWeight: 700, borderRight: "1px solid #1a5a7a" }}>Description</th>
+            <th style={{ padding: "10px 12px", textAlign: "left", fontWeight: 700, borderRight: "1px solid #1a5a7a" }}>Opportunities</th>
             <th style={{ padding: "10px 12px", textAlign: "center", fontWeight: 700, width: 180 }}>Potential Savings</th>
           </tr>
         </thead>
         <tbody>
           {ALL_CODES.map((code, i) => {
-            const cat = i + 1;
             const opp = oppByCode[code] || 0;
             const [pLow, pHigh] = RANGE_PCT[code];
-            const savingsLow = opp * pLow;
-            const savingsHigh = opp * pHigh;
-            const savingsStr = fmtM(savingsLow) + " to " + fmtM(savingsHigh);
             return (
-              <tr key={code} style={{ background: rowColors[i % 2], borderBottom: "1px solid #e0e0e0" }}>
-                <td style={{ padding: "10px 12px", textAlign: "center", fontWeight: 700, fontSize: 13, color: "#1a4d80", borderRight: "1px solid #eee" }}>{cat}</td>
-                <td style={{ padding: "10px 12px", color: "#333", borderRight: "1px solid #eee", lineHeight: 1.4 }}>{CODE_DESCRIPTIONS[code]}</td>
-                <td style={{ padding: "10px 12px", color: "#555", borderRight: "1px solid #eee", lineHeight: 1.4, fontStyle: "italic" }}>{OPPORTUNITY_TEXT[code]}</td>
-                <td style={{ padding: "10px 12px", textAlign: "center", fontWeight: 600, color: "#1b6b42", fontSize: 12 }}>{savingsStr}</td>
+              <tr key={code} style={{ background: i % 2 === 0 ? "#f7f9fb" : TY.white, borderBottom: `1px solid ${TY.border}` }}>
+                <td style={{ padding: "10px 12px", textAlign: "center", fontWeight: 700, fontSize: 13, color: TY.navy, borderRight: `1px solid ${TY.border}` }}>{i + 1}</td>
+                <td style={{ padding: "10px 12px", color: TY.text, borderRight: `1px solid ${TY.border}`, lineHeight: 1.4 }}>{CODE_DESCRIPTIONS[code]}</td>
+                <td style={{ padding: "10px 12px", color: TY.textLight, borderRight: `1px solid ${TY.border}`, lineHeight: 1.4, fontStyle: "italic" }}>{OPPORTUNITY_TEXT[code]}</td>
+                <td style={{ padding: "10px 12px", textAlign: "center", fontWeight: 600, color: TY.green, fontSize: 12 }}>{fmtM(opp * pLow)} to {fmtM(opp * pHigh)}</td>
               </tr>
             );
           })}
         </tbody>
         <tfoot>
-          <tr style={{ background: "#1a4d80", color: "#fff" }}>
+          <tr style={{ background: TY.navy, color: TY.white }}>
             <td colSpan={3} style={{ padding: "12px", fontWeight: 700, fontSize: 13 }}>The sum total of the potential savings ranges from</td>
             <td style={{ padding: "12px", textAlign: "center", fontWeight: 700, fontSize: 13 }}>{fmtM(totalLow)} to {fmtM(totalHigh)}</td>
           </tr>
@@ -231,39 +238,35 @@ function ProgramList({ matrixData, entityName }) {
   const [sortAsc, setSortAsc] = useState(true);
   const [filterCat, setFilterCat] = useState("all");
 
-  const handleSort = (col) => {
-    if (sortCol === col) setSortAsc(!sortAsc);
-    else { setSortCol(col); setSortAsc(true); }
-  };
+  const handleSort = (col) => { if (sortCol === col) setSortAsc(!sortAsc); else { setSortCol(col); setSortAsc(true); } };
 
-  const enriched = programs.map(p => ({ ...p, cat: catMap[p.code] || 0, codeDesc: CODE_DESCRIPTIONS[p.code] || "" }));
+  const enriched = programs.map(p => ({ ...p, cat: catMap[p.code] || 0 }));
   const filtered = filterCat === "all" ? enriched : enriched.filter(p => String(p.cat) === filterCat);
   const sorted = [...filtered].sort((a, b) => {
     let cmp = 0;
     if (sortCol === "name") cmp = (a.name || "").localeCompare(b.name || "");
-    else if (sortCol === "cost") cmp = a.totalCost - b.totalCost;
+    else if (sortCol === "cost") cmp = a.subsidizedCost - b.subsidizedCost;
     else if (sortCol === "cat") cmp = a.cat - b.cat;
     return sortAsc ? cmp : -cmp;
   });
 
   const arrow = (col) => sortCol === col ? (sortAsc ? " ▲" : " ▼") : "";
-  const thStyle = { padding: "10px 12px", textAlign: "left", fontWeight: 700, cursor: "pointer", borderRight: "1px solid #2a6ab0", userSelect: "none" };
-  const rowColors = ["#f0f7ff", "#ffffff"];
+  const thStyle = { padding: "10px 12px", textAlign: "left", fontWeight: 700, cursor: "pointer", borderRight: "1px solid #1a5a7a", userSelect: "none" };
   const cats = [...new Set(enriched.map(p => p.cat))].sort((a, b) => a - b);
 
   return (
-    <div style={{ background: "#fff", borderRadius: 10, color: "#111", maxWidth: 1150, margin: "0 auto", padding: 20, overflow: "auto" }}>
+    <div style={{ background: TY.white, borderRadius: 8, color: TY.text, maxWidth: 1150, margin: "0 auto", padding: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
         <div>
-          <h2 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 800 }}>{entityName ? entityName + " — " : ""}Program Details</h2>
-          <p style={{ margin: 0, fontSize: 11, color: "#666" }}>
-            {sorted.length} programs{filterCat !== "all" ? " in Category " + filterCat : ""} · Total: {fmt$(sorted.reduce((s, p) => s + p.totalCost, 0))}
+          <h2 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 800, color: TY.navy }}>{entityName ? `${entityName} — ` : ""}Program Details</h2>
+          <p style={{ margin: 0, fontSize: 12, color: TY.textLight }}>
+            {sorted.length} programs{filterCat !== "all" ? ` in Category ${filterCat}` : ""} · Total Subsidized Cost: {fmt$(sorted.reduce((s, p) => s + Math.max(0, p.subsidizedCost), 0))}
           </p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <label style={{ fontSize: 11, color: "#666", fontWeight: 600 }}>Filter by Category:</label>
+          <label style={{ fontSize: 12, color: TY.textLight, fontWeight: 600 }}>Filter by Category:</label>
           <select value={filterCat} onChange={(e) => setFilterCat(e.target.value)} style={{
-            padding: "6px 10px", fontSize: 12, borderRadius: 5, border: "1px solid #ccc", background: "#fff", color: "#333",
+            padding: "6px 10px", fontSize: 12, borderRadius: 5, border: `1px solid ${TY.border}`, background: TY.white, color: TY.text,
           }}>
             <option value="all">All Categories</option>
             {cats.map(c => <option key={c} value={String(c)}>Category {c}</option>)}
@@ -272,20 +275,20 @@ function ProgramList({ matrixData, entityName }) {
       </div>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
         <thead>
-          <tr style={{ background: "#1a4d80", color: "#fff" }}>
+          <tr style={{ background: TY.navy, color: TY.white }}>
             <th style={{ ...thStyle, width: 70, textAlign: "center" }} onClick={() => handleSort("cat")}>{"Cat" + arrow("cat")}</th>
             <th style={{ ...thStyle, width: 200 }} onClick={() => handleSort("name")}>{"Program" + arrow("name")}</th>
             <th style={thStyle}>Description</th>
-            <th style={{ ...thStyle, width: 130, textAlign: "right", borderRight: "none" }} onClick={() => handleSort("cost")}>{"Total Cost" + arrow("cost")}</th>
+            <th style={{ ...thStyle, width: 150, textAlign: "right", borderRight: "none" }} onClick={() => handleSort("cost")}>{"Subsidized Cost" + arrow("cost")}</th>
           </tr>
         </thead>
         <tbody>
           {sorted.map((p, i) => (
-            <tr key={p.pid + "-" + i} style={{ background: rowColors[i % 2], borderBottom: "1px solid #e0e0e0" }}>
-              <td style={{ padding: "10px 12px", textAlign: "center", fontWeight: 700, fontSize: 13, color: "#1a4d80", borderRight: "1px solid #eee" }}>{p.cat}</td>
-              <td style={{ padding: "10px 12px", color: "#222", fontWeight: 600, borderRight: "1px solid #eee" }}>{p.name}</td>
-              <td style={{ padding: "10px 12px", color: "#555", lineHeight: 1.4, borderRight: "1px solid #eee", fontSize: 11 }}>{p.desc}</td>
-              <td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600, color: "#222" }}>{fmt$(p.totalCost)}</td>
+            <tr key={p.pid + "-" + i} style={{ background: i % 2 === 0 ? "#f7f9fb" : TY.white, borderBottom: `1px solid ${TY.border}` }}>
+              <td style={{ padding: "10px 12px", textAlign: "center", fontWeight: 700, fontSize: 13, color: TY.navy, borderRight: `1px solid ${TY.border}` }}>{p.cat}</td>
+              <td style={{ padding: "10px 12px", color: TY.text, fontWeight: 600, borderRight: `1px solid ${TY.border}` }}>{p.name}</td>
+              <td style={{ padding: "10px 12px", color: TY.textLight, lineHeight: 1.4, borderRight: `1px solid ${TY.border}`, fontSize: 11 }}>{p.desc}</td>
+              <td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600, color: TY.text }}>{fmt$(p.subsidizedCost)}</td>
             </tr>
           ))}
         </tbody>
@@ -303,7 +306,8 @@ function App() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [entityName, setEntityName] = useState("");
-  const [costThreshold, setCostThreshold] = useState("445000");
+  const [costThreshold, setCostThreshold] = useState("");
+  const [medianNote, setMedianNote] = useState("");
   const [debugInfo, setDebugInfo] = useState("");
   const [activeTab, setActiveTab] = useState("matrix");
   const [exporting, setExporting] = useState(false);
@@ -312,7 +316,7 @@ function App() {
   const programsRef = useRef(null);
 
   const loadScript = (src) => new Promise((resolve, reject) => {
-    const existing = document.querySelector('script[src="' + src + '"]');
+    const existing = document.querySelector(`script[src="${src}"]`);
     if (existing) { resolve(); return; }
     const s = document.createElement("script");
     s.src = src;
@@ -321,11 +325,76 @@ function App() {
     document.head.appendChild(s);
   });
 
+  const loadXLSX = useCallback(() => {
+    return new Promise((resolve, reject) => {
+      if (window.XLSX) { resolve(); return; }
+      const s = document.createElement("script");
+      s.src = XLSX_CDN;
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error("Failed to load XLSX library"));
+      document.head.appendChild(s);
+    });
+  }, []);
+
+  const readFile = (file) => new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = (e) => res(new Uint8Array(e.target.result));
+    r.onerror = () => rej(new Error("Failed to read file"));
+    r.readAsArrayBuffer(file);
+  });
+
+  const findCol = (keys, ...searches) => {
+    for (const s of searches) { const f = keys.find(k => k.toLowerCase().trim() === s.toLowerCase()); if (f) return f; }
+    for (const s of searches) { const f = keys.find(k => k.toLowerCase().includes(s.toLowerCase())); if (f) return f; }
+    return searches[0];
+  };
+
+  // Auto-calculate median on File 1 upload
+  const handleFile1 = async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    setFile1(f);
+    setFile1Name(f.name);
+
+    try {
+      await loadXLSX();
+      const data = await readFile(f);
+      const wb = window.XLSX.read(data, { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = window.XLSX.utils.sheet_to_json(ws, { defval: "" });
+      const cols = rows.length > 0 ? Object.keys(rows[0]) : [];
+      const persCol = findCol(cols, "Personnel");
+      const nonpersCol = findCol(cols, "NonPersonnel", "Non-Personnel", "Non Personnel");
+      const revCol = findCol(cols, "Revenue");
+
+      const subsidizedCosts = [];
+      rows.forEach((row) => {
+        const personnel = parseFloat(row[persCol]) || 0;
+        const nonPersonnel = parseFloat(row[nonpersCol]) || 0;
+        const revenue = parseFloat(row[revCol]) || 0;
+        const sub = personnel + nonPersonnel - revenue;
+        if (sub > 0) subsidizedCosts.push(sub);
+      });
+
+      if (subsidizedCosts.length > 0) {
+        subsidizedCosts.sort((a, b) => a - b);
+        const mid = Math.floor(subsidizedCosts.length / 2);
+        const median = subsidizedCosts.length % 2 === 0
+          ? Math.round((subsidizedCosts[mid - 1] + subsidizedCosts[mid]) / 2)
+          : Math.round(subsidizedCosts[mid]);
+        setCostThreshold(String(median));
+        setMedianNote(`Median of ${subsidizedCosts.length} programs with positive subsidized cost: ${fmt$(median)}`);
+      }
+    } catch (err) {
+      console.error("Median calculation error:", err);
+    }
+  };
+
   const getContentRef = () => activeTab === "matrix" ? matrixRef : activeTab === "opportunities" ? opportunitiesRef : programsRef;
   const getFileName = () => {
     const prefix = entityName ? entityName.replace(/[^a-zA-Z0-9]/g, "_") : "Report";
     const suffix = activeTab === "matrix" ? "Impact_Matrix" : activeTab === "opportunities" ? "Opportunities_Chart" : "Program_Details";
-    return prefix + "_" + suffix;
+    return `${prefix}_${suffix}`;
   };
 
   const captureAtFixedWidth = async (el) => {
@@ -344,145 +413,44 @@ function App() {
     return canvas;
   };
 
-  const exportPNG = async () => {
-    const el = getContentRef().current;
-    if (!el) return;
-    setExporting(true);
-    try {
-      const canvas = await captureAtFixedWidth(el);
-      const link = document.createElement("a");
-      link.download = getFileName() + ".png";
-      link.href = canvas.toDataURL("image/png");
-      link.click();
-    } catch (err) { console.error("PNG export error:", err); }
-    setExporting(false);
-  };
+  const exportPNG = async () => { const el = getContentRef().current; if (!el) return; setExporting(true); try { const canvas = await captureAtFixedWidth(el); const link = document.createElement("a"); link.download = getFileName() + ".png"; link.href = canvas.toDataURL("image/png"); link.click(); } catch (err) { console.error(err); } setExporting(false); };
 
-  const exportPDF = async () => {
-    const el = getContentRef().current;
-    if (!el) return;
-    setExporting(true);
-    try {
-      await loadScript(JSPDF_CDN);
-      const canvas = await captureAtFixedWidth(el);
-      const imgData = canvas.toDataURL("image/png");
-      const { jsPDF } = window.jspdf;
-      const imgW = canvas.width;
-      const imgH = canvas.height;
-      const pdf = new jsPDF({ orientation: "landscape", unit: "pt", format: "letter" });
-      const pageW = pdf.internal.pageSize.getWidth();
-      const pageH = pdf.internal.pageSize.getHeight();
-      const margin = 20;
-      const maxW = pageW - margin * 2;
-      const maxH = pageH - margin * 2;
-      const ratio = Math.min(maxW / imgW, maxH / imgH);
-      const w = imgW * ratio;
-      const h = imgH * ratio;
-      const x = (pageW - w) / 2;
-      const y = (pageH - h) / 2;
-      pdf.addImage(imgData, "PNG", x, y, w, h);
-      pdf.save(getFileName() + ".pdf");
-    } catch (err) { console.error("PDF export error:", err); }
-    setExporting(false);
-  };
+  const exportPDF = async () => { const el = getContentRef().current; if (!el) return; setExporting(true); try { await loadScript(JSPDF_CDN); const canvas = await captureAtFixedWidth(el); const imgData = canvas.toDataURL("image/png"); const { jsPDF } = window.jspdf; const pdf = new jsPDF({ orientation: "landscape", unit: "pt", format: "letter" }); const pw = pdf.internal.pageSize.getWidth(), ph = pdf.internal.pageSize.getHeight(), m = 20; const ratio = Math.min((pw - m*2) / canvas.width, (ph - m*2) / canvas.height); const w = canvas.width * ratio, h = canvas.height * ratio; pdf.addImage(imgData, "PNG", (pw-w)/2, (ph-h)/2, w, h); pdf.save(getFileName() + ".pdf"); } catch (err) { console.error(err); } setExporting(false); };
 
   const exportExcel = async () => {
-    if (!matrixData) return;
-    setExporting(true);
+    if (!matrixData) return; setExporting(true);
     try {
-      const X = window.XLSX;
-      const wb = X.utils.book_new();
-
+      await loadXLSX(); const X = window.XLSX; const wb = X.utils.book_new();
       if (activeTab === "matrix") {
-        const rows = ALL_CODES.map((code, i) => ({
-          Category: i + 1,
-          Description: CODE_DESCRIPTIONS[code],
-          Programs: matrixData.byCode[code]?.count || 0,
-          Investment: matrixData.byCode[code]?.investment || 0,
-          Rank: matrixData.rankData[code]?.rank || "",
-        }));
-        const ws = X.utils.json_to_sheet(rows);
-        ws["!cols"] = [{ wch: 10 }, { wch: 50 }, { wch: 12 }, { wch: 18 }, { wch: 8 }];
-        X.utils.book_append_sheet(wb, ws, "Impact Matrix");
-
+        const rows = ALL_CODES.map((code, i) => ({ Category: i+1, Description: CODE_DESCRIPTIONS[code], Programs: matrixData.byCode[code]?.count||0, "Subsidized Cost": matrixData.byCode[code]?.investment||0, Rank: matrixData.rankData[code]?.rank||"" }));
+        const ws = X.utils.json_to_sheet(rows); ws["!cols"] = [{wch:10},{wch:50},{wch:12},{wch:18},{wch:8}]; X.utils.book_append_sheet(wb, ws, "Impact Matrix");
       } else if (activeTab === "opportunities") {
-        const rows = ALL_CODES.map((code, i) => {
-          const opp = matrixData.oppByCode[code] || 0;
-          const [pLow, pHigh] = RANGE_PCT[code];
-          return {
-            Category: i + 1,
-            Description: CODE_DESCRIPTIONS[code],
-            Opportunities: OPPORTUNITY_TEXT[code],
-            "Savings Low": opp * pLow,
-            "Savings High": opp * pHigh,
-          };
-        });
-        const ws = X.utils.json_to_sheet(rows);
-        ws["!cols"] = [{ wch: 10 }, { wch: 50 }, { wch: 60 }, { wch: 16 }, { wch: 16 }];
-        X.utils.book_append_sheet(wb, ws, "Opportunities");
-
+        const rows = ALL_CODES.map((code, i) => { const opp = matrixData.oppByCode[code]||0; const [pL,pH] = RANGE_PCT[code]; return { Category: i+1, Description: CODE_DESCRIPTIONS[code], Opportunities: OPPORTUNITY_TEXT[code], "Savings Low": opp*pL, "Savings High": opp*pH }; });
+        const ws = X.utils.json_to_sheet(rows); ws["!cols"] = [{wch:10},{wch:50},{wch:60},{wch:16},{wch:16}]; X.utils.book_append_sheet(wb, ws, "Opportunities");
       } else if (activeTab === "programs") {
-        const { programs, catMap } = matrixData;
-        const rows = programs
-          .map(p => ({
-            Category: catMap[p.code] || 0,
-            Program: p.name,
-            Description: p.desc,
-            "Total Cost": p.totalCost,
-            "Category Description": CODE_DESCRIPTIONS[p.code] || "",
-          }))
-          .sort((a, b) => a.Category - b.Category);
-        const ws = X.utils.json_to_sheet(rows);
-        ws["!cols"] = [{ wch: 10 }, { wch: 30 }, { wch: 60 }, { wch: 16 }, { wch: 50 }];
-        X.utils.book_append_sheet(wb, ws, "Program Details");
+        const rows = matrixData.programs.map(p => ({ Category: matrixData.catMap[p.code]||0, Program: p.name, Description: p.desc, "Subsidized Cost": Math.max(0, p.subsidizedCost), "Category Description": CODE_DESCRIPTIONS[p.code]||"" })).sort((a,b) => a.Category - b.Category);
+        const ws = X.utils.json_to_sheet(rows); ws["!cols"] = [{wch:10},{wch:30},{wch:60},{wch:18},{wch:50}]; X.utils.book_append_sheet(wb, ws, "Program Details");
       }
-
       X.writeFile(wb, getFileName() + ".xlsx");
-    } catch (err) { console.error("Excel export error:", err); }
+    } catch (err) { console.error(err); }
     setExporting(false);
-  };
-
-  const readFile = (file) => new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload = (e) => res(new Uint8Array(e.target.result));
-    r.onerror = () => rej(new Error("Failed to read file"));
-    r.readAsArrayBuffer(file);
-  });
-
-  const findCol = (keys, ...searches) => {
-    for (const s of searches) {
-      const found = keys.find(k => k.toLowerCase().trim() === s.toLowerCase());
-      if (found) return found;
-    }
-    for (const s of searches) {
-      const found = keys.find(k => k.toLowerCase().includes(s.toLowerCase()));
-      if (found) return found;
-    }
-    return searches[0];
   };
 
   const processData = async () => {
     if (!file1 || !file2) { setError("Please upload both files."); return; }
-    setLoading(true);
-    setError("");
-    setDebugInfo("");
-
+    setLoading(true); setError(""); setDebugInfo("");
     try {
-      const debug = [];
+      await loadXLSX(); const XLSX = window.XLSX; const debug = [];
 
-      const data1 = await readFile(file1);
-      const wb1 = XLSX.read(data1, { type: "array" });
+      const data1 = await readFile(file1); const wb1 = XLSX.read(data1, { type: "array" });
       debug.push("File 1 sheets: " + wb1.SheetNames.join(", "));
-      const ws1 = wb1.Sheets[wb1.SheetNames[0]];
-      const rows1 = XLSX.utils.sheet_to_json(ws1, { defval: "" });
+      const ws1 = wb1.Sheets[wb1.SheetNames[0]]; const rows1 = XLSX.utils.sheet_to_json(ws1, { defval: "" });
       debug.push("File 1 Tab 1 rows: " + rows1.length);
 
-      const data2 = await readFile(file2);
-      const wb2 = XLSX.read(data2, { type: "array" });
+      const data2 = await readFile(file2); const wb2 = XLSX.read(data2, { type: "array" });
       debug.push("File 2 sheets: " + wb2.SheetNames.join(", "));
       if (wb2.SheetNames.length < 2) throw new Error("File 2 needs at least 2 tabs.");
-      const ws2 = wb2.Sheets[wb2.SheetNames[1]];
-      const rows2 = XLSX.utils.sheet_to_json(ws2, { defval: "" });
+      const ws2 = wb2.Sheets[wb2.SheetNames[1]]; const rows2 = XLSX.utils.sheet_to_json(ws2, { defval: "" });
       debug.push("File 2 Tab 2 rows: " + rows2.length);
 
       const cols1 = rows1.length > 0 ? Object.keys(rows1[0]) : [];
@@ -502,13 +470,10 @@ function App() {
       const descCol2 = findCol(cols2, "Program or Service Description", "Program Description", "Description");
 
       const hasDescInFile1 = cols1.some(c => c.toLowerCase().includes("description"));
-      debug.push("File 1 has description column: " + hasDescInFile1);
-      debug.push("File 1 column mapping: pid=" + pidCol1 + ", personnel=" + persCol + ", nonpersonnel=" + nonpersCol + ", quartile=" + quartCol + ", program=" + progCol + ", desc=" + descCol + ", revenue=" + revCol);
-      debug.push("File 2 column mapping: pid=" + pidCol2 + ", abbr=" + abbrCol + ", score=" + scoreCol2 + ", desc=" + descCol2);
+      debug.push("File 1 cols: " + cols1.join(", "));
+      debug.push("File 2 cols: " + cols2.join(", "));
 
-      const mandateScores = {};
-      const relianceScores = {};
-      const descriptionsFromFile2 = {};
+      const mandateScores = {}, relianceScores = {}, descriptionsFromFile2 = {};
       rows2.forEach((row) => {
         const pid = String(row[pidCol2]).trim();
         const abbr = String(row[abbrCol]).trim();
@@ -516,22 +481,19 @@ function App() {
         if (!pid || pid === "undefined") return;
         if (abbr === "Mandate") mandateScores[pid] = (mandateScores[pid] || 0) + score;
         else if (abbr === "Reliance") relianceScores[pid] = (relianceScores[pid] || 0) + score;
-        if (!descriptionsFromFile2[pid]) {
-          const d = String(row[descCol2] || "").trim();
-          if (d) descriptionsFromFile2[pid] = d;
-        }
+        if (!descriptionsFromFile2[pid]) { const d = String(row[descCol2] || "").trim(); if (d) descriptionsFromFile2[pid] = d; }
       });
 
-      debug.push("Mandate scores found for " + Object.keys(mandateScores).length + " programs, Reliance for " + Object.keys(relianceScores).length);
+      debug.push("Mandate scores: " + Object.keys(mandateScores).length + ", Reliance: " + Object.keys(relianceScores).length);
 
       const quartileValues = new Set();
       rows1.slice(0, 20).forEach(r => { const v = r[quartCol]; if (v !== "" && v != null) quartileValues.add(String(v).trim()); });
-      const sampleQuartiles = Array.from(quartileValues).slice(0, 6);
-      debug.push("Sample quartile values: " + sampleQuartiles.join(", "));
-      const isNumericQuartile = sampleQuartiles.every(v => !isNaN(parseFloat(v)));
-      if (isNumericQuartile) debug.push("Detected NUMERIC quartiles (1=Most, 2=More, 3=Less, 4=Least)");
+      const sampleQ = Array.from(quartileValues).slice(0, 6);
+      debug.push("Sample quartiles: " + sampleQ.join(", "));
+      const isNumericQuartile = sampleQ.every(v => !isNaN(parseFloat(v)));
 
       const threshold = parseFloat(costThreshold) || 445000;
+      debug.push("Cost threshold: " + fmt$(threshold));
       const programs = [];
 
       rows1.forEach((row) => {
@@ -540,241 +502,241 @@ function App() {
         const nonPersonnel = parseFloat(row[nonpersCol]) || 0;
         const totalCost = personnel + nonPersonnel;
         const revenue = parseFloat(row[revCol]) || 0;
+        const subsidizedCost = totalCost - revenue;
         const quartile = String(row[quartCol]).trim();
         const mScore = mandateScores[pid] || 0;
         const rScore = relianceScores[pid] || 0;
 
         if (totalCost === 0) return;
 
-        const costHL = totalCost > threshold ? "H" : "L";
+        // Use subsidized cost for classification
+        const costHL = subsidizedCost > threshold ? "H" : "L";
         let impactHL;
-        if (isNumericQuartile) {
-          const qNum = parseFloat(quartile);
-          impactHL = (qNum === 1 || qNum === 2) ? "H" : "L";
-        } else {
-          impactHL = (quartile === "Most Aligned" || quartile === "More Aligned") ? "H" : "L";
-        }
+        if (isNumericQuartile) { const qNum = parseFloat(quartile); impactHL = (qNum === 1 || qNum === 2) ? "H" : "L"; }
+        else { impactHL = (quartile === "Most Aligned" || quartile === "More Aligned") ? "H" : "L"; }
         const mandateHL = mScore > 2 ? "H" : "L";
         const relianceHL = rScore > 2 ? "H" : "L";
         const code = costHL + impactHL + mandateHL + relianceHL;
-        const revOpp = revenue >= totalCost ? 0 : totalCost - revenue;
 
         const descFromFile1 = hasDescInFile1 ? String(row[descCol] || "").trim() : "";
         const desc = descFromFile1 || descriptionsFromFile2[pid] || "";
 
-        programs.push({ name: row[progCol], desc, pid, totalCost, revenue, revOpp, code });
+        programs.push({ name: row[progCol], desc, pid, totalCost, revenue, subsidizedCost, revOpp: Math.max(0, subsidizedCost), code });
       });
 
       debug.push("Classified: " + programs.length + " programs");
       if (programs.length === 0) throw new Error("No programs classified.");
 
-      const byCode = {};
-      const oppByCode = {};
+      // Aggregate — use subsidized cost (capped at 0) for investment display
+      const byCode = {}, oppByCode = {};
       programs.forEach((p) => {
         if (!byCode[p.code]) byCode[p.code] = { count: 0, investment: 0 };
         byCode[p.code].count++;
-        byCode[p.code].investment += p.totalCost;
-        oppByCode[p.code] = (oppByCode[p.code] || 0) + p.revOpp;
+        byCode[p.code].investment += Math.max(0, p.subsidizedCost);
+        oppByCode[p.code] = (oppByCode[p.code] || 0) + Math.max(0, p.subsidizedCost);
       });
 
-      const catMap = {};
-      ALL_CODES.forEach((c, i) => { catMap[c] = i + 1; });
-      const ranked = ALL_CODES
-        .map(c => ({ code: c, cat: catMap[c], inv: byCode[c]?.investment || 0 }))
-        .sort((a, b) => b.inv - a.inv);
-      const rankData = {};
-      ranked.forEach((item, i) => { rankData[item.code] = { rank: i + 1, cat: item.cat }; });
+      const catMap = {}; ALL_CODES.forEach((c, i) => { catMap[c] = i + 1; });
+      const ranked = ALL_CODES.map(c => ({ code: c, cat: catMap[c], inv: byCode[c]?.investment || 0 })).sort((a, b) => b.inv - a.inv);
+      const rankData = {}; ranked.forEach((item, i) => { rankData[item.code] = { rank: i + 1, cat: item.cat }; });
 
       const totalPrograms = programs.length;
-      const totalInvestment = programs.reduce((s, p) => s + p.totalCost, 0);
+      const totalInvestment = programs.reduce((s, p) => s + Math.max(0, p.subsidizedCost), 0);
 
-      debug.push("Total: " + totalPrograms + " programs, " + fmt$(totalInvestment));
+      debug.push("Total: " + totalPrograms + " programs, " + fmt$(totalInvestment) + " subsidized cost");
       setDebugInfo(debug.join("\n"));
       setMatrixData({ byCode, rankData, totalPrograms, totalInvestment, oppByCode, programs, catMap });
-
-    } catch (err) {
-      setError("Error: " + err.message);
-    }
+    } catch (err) { setError("Error: " + err.message); }
     setLoading(false);
   };
 
-  const reset = () => {
-    setMatrixData(null); setFile1(null); setFile2(null);
-    setFile1Name(""); setFile2Name(""); setError(""); setDebugInfo(""); setActiveTab("matrix");
-  };
+  const reset = () => { setMatrixData(null); setFile1(null); setFile2(null); setFile1Name(""); setFile2Name(""); setError(""); setDebugInfo(""); setActiveTab("matrix"); setMedianNote(""); setCostThreshold(""); };
 
   const Q = {
-    hiLo: { bg: "#eaf5f0", border: "#278c5a", title: "#1b6b42" },
-    hiHi: { bg: "#e6eef7", border: "#2260a0", title: "#1a4a78" },
-    loLo: { bg: "#fdf5e0", border: "#b8870a", title: "#7d5d00" },
-    loHi: { bg: "#fce8e8", border: "#bf2a2a", title: "#8e1c1c" },
+    hiLo: { bg: "#edf7f1", border: "#1B8A5A", title: "#136B44" },
+    hiHi: { bg: "#e9f0f8", border: "#0076D6", title: "#003B5C" },
+    loLo: { bg: "#fef8e8", border: "#B8870A", title: "#7d5d00" },
+    loHi: { bg: "#fce8e8", border: "#C53030", title: "#8e1c1c" },
   };
 
   const tabStyle = (active) => ({
     padding: "10px 24px", fontSize: 13, fontWeight: 700, cursor: "pointer", border: "none",
-    borderBottom: active ? "3px solid #60a5fa" : "3px solid transparent",
-    background: "transparent", color: active ? "#60a5fa" : "#6b8399",
+    borderBottom: active ? `3px solid ${TY.blue}` : "3px solid transparent",
+    background: "transparent", color: active ? TY.blue : TY.textLight,
     transition: "all 0.2s",
   });
 
+  const btnStyle = (color) => ({
+    padding: "8px 18px", fontSize: 12, fontWeight: 600, borderRadius: 6,
+    border: `1px solid ${color}`, background: color + "12", color: color, cursor: "pointer",
+    opacity: exporting ? 0.5 : 1, transition: "all 0.2s",
+  });
+
+  const inputStyle = {
+    width: "100%", padding: "10px 14px", fontSize: 14, borderRadius: 6,
+    border: `1px solid ${TY.border}`, background: TY.white, color: TY.text, outline: "none", boxSizing: "border-box",
+  };
+
   return (
-    <div style={{ fontFamily: "'Helvetica Neue', Arial, sans-serif", minHeight: "100vh", background: "#0f1923", color: "#ddd" }}>
-      <div style={{ padding: "24px 28px 16px", borderBottom: "1px solid #1e2e3e" }}>
-        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: "#60a5fa" }}>Program Impact Matrix Generator</h1>
-        <p style={{ margin: "4px 0 0", fontSize: 12, color: "#6b8399" }}>Impact vs Cost · Mandate vs Reliance</p>
+    <div style={{ fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif", minHeight: "100vh", background: TY.lightGray, color: TY.text }}>
+      {/* Header */}
+      <div style={{ padding: "16px 28px", background: TY.navy, display: "flex", alignItems: "center", gap: 16 }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: TY.white, letterSpacing: -0.3 }}>
+            Program Impact Matrix
+          </h1>
+          <p style={{ margin: "2px 0 0", fontSize: 12, color: "#8bb8d4" }}>Impact vs Cost · Mandate vs Reliance</p>
+        </div>
       </div>
 
+      {/* Upload Panel */}
       {!matrixData && (
-        <div style={{ maxWidth: 640, margin: "32px auto", padding: "0 20px" }}>
-          <div style={{ background: "#162231", border: "1px solid #1e2e3e", borderRadius: 10, padding: 28 }}>
+        <div style={{ maxWidth: 660, margin: "36px auto", padding: "0 20px" }}>
+          <div style={{
+            background: TY.white, border: `1px solid ${TY.border}`, borderRadius: 10, padding: 32,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.06)",
+          }}>
+            <h2 style={{ margin: "0 0 24px", fontSize: 17, fontWeight: 700, color: TY.navy }}>Upload Files to Generate Reports</h2>
+
             <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: "#7a92a8", display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: 0.8 }}>Entity Name</label>
-              <input type="text" value={entityName} onChange={(e) => setEntityName(e.target.value)} placeholder="e.g. City of Olympia, WA"
-                style={{ width: "100%", padding: "9px 12px", fontSize: 14, borderRadius: 6, border: "1px solid #2a3a4a", background: "#0d1520", color: "#ddd", outline: "none", boxSizing: "border-box" }} />
+              <label style={{ fontSize: 12, fontWeight: 600, color: TY.textLight, display: "block", marginBottom: 6 }}>Entity Name</label>
+              <input type="text" value={entityName} onChange={(e) => setEntityName(e.target.value)} placeholder="e.g. City of Olympia, WA" style={inputStyle} />
             </div>
-            <div style={{ marginBottom: 24 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: "#7a92a8", display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: 0.8 }}>Cost Threshold (High/Low)</label>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <input type="number" value={costThreshold} onChange={(e) => setCostThreshold(e.target.value)}
-                  style={{ width: 180, padding: "9px 12px", fontSize: 14, borderRadius: 6, border: "1px solid #2a3a4a", background: "#0d1520", color: "#ddd", outline: "none" }} />
-                <span style={{ fontSize: 10, color: "#556" }}>Default: $445,000</span>
-              </div>
-            </div>
+
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 24 }}>
               {[
-                { label: "File 1 — Summary Report", desc: "Tab 1: Programs, Scores, Costs", file: file1, name: file1Name, id: "f1", set: (f) => { setFile1(f); setFile1Name(f.name); } },
-                { label: "File 2 — Program Scores", desc: "Tab 2: Mandate & Reliance Scores", file: file2, name: file2Name, id: "f2", set: (f) => { setFile2(f); setFile2Name(f.name); } },
+                { label: "File 1 — Summary Report", desc: "Tab 1: Programs, Scores, Costs", file: file1, name: file1Name, id: "f1",
+                  handler: handleFile1 },
+                { label: "File 2 — Program Scores", desc: "Tab 2: Mandate & Reliance Scores", file: file2, name: file2Name, id: "f2",
+                  handler: (e) => { const f = e.target.files[0]; if (f) { setFile2(f); setFile2Name(f.name); } } },
               ].map((item) => (
                 <div key={item.id}>
-                  <label style={{ fontSize: 11, fontWeight: 600, color: "#7a92a8", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.8 }}>{item.label}</label>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: TY.textLight, display: "block", marginBottom: 6 }}>{item.label}</label>
                   <div style={{
-                    border: "2px dashed " + (item.file ? "#34d399" : "#2a3a4a"), borderRadius: 8, padding: 18,
-                    textAlign: "center", cursor: "pointer", background: item.file ? "rgba(52,211,153,0.06)" : "#0d1520",
+                    border: `2px dashed ${item.file ? TY.green : TY.border}`, borderRadius: 8, padding: 20,
+                    textAlign: "center", cursor: "pointer", background: item.file ? "#f0faf5" : TY.lightGray,
+                    transition: "all 0.2s",
                   }} onClick={() => document.getElementById(item.id).click()}>
-                    <input id={item.id} type="file" accept=".xlsx,.xls" onChange={(e) => { const f = e.target.files[0]; if (f) item.set(f); }} style={{ display: "none" }} />
+                    <input id={item.id} type="file" accept=".xlsx,.xls" onChange={item.handler} style={{ display: "none" }} />
                     {item.file
-                      ? <React.Fragment><div style={{ fontSize: 18, color: "#34d399" }}>✓</div><div style={{ fontSize: 11, color: "#34d399", fontWeight: 600, marginTop: 2 }}>{item.name}</div></React.Fragment>
-                      : <React.Fragment><div style={{ fontSize: 22, opacity: 0.35, marginBottom: 2 }}>📊</div><div style={{ fontSize: 10, color: "#556" }}>{item.desc}</div></React.Fragment>
+                      ? <React.Fragment><div style={{ fontSize: 20, color: TY.green }}>✓</div><div style={{ fontSize: 11, color: TY.green, fontWeight: 600, marginTop: 2 }}>{item.name}</div></React.Fragment>
+                      : <React.Fragment><div style={{ fontSize: 22, opacity: 0.3, marginBottom: 2 }}>📊</div><div style={{ fontSize: 11, color: TY.textLight }}>{item.desc}</div></React.Fragment>
                     }
                   </div>
                 </div>
               ))}
             </div>
-            {error && <div style={{ color: "#f87171", fontSize: 12, marginBottom: 14, padding: "8px 12px", background: "rgba(248,113,113,0.08)", borderRadius: 6, whiteSpace: "pre-wrap" }}>{error}</div>}
+
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: TY.textLight, display: "block", marginBottom: 6 }}>
+                Cost Threshold (Subsidized Cost — High/Low boundary)
+              </label>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <input type="number" value={costThreshold} onChange={(e) => setCostThreshold(e.target.value)} placeholder="Auto-calculated from median"
+                  style={{ ...inputStyle, width: 220 }} />
+              </div>
+              {medianNote && (
+                <div style={{ fontSize: 11, color: TY.blue, marginTop: 6, fontStyle: "italic" }}>
+                  {medianNote}
+                </div>
+              )}
+            </div>
+
+            {error && <div style={{ color: TY.red, fontSize: 12, marginBottom: 14, padding: "10px 14px", background: "#fef2f2", borderRadius: 6, border: `1px solid ${TY.red}22` }}>{error}</div>}
+
             <button onClick={processData} disabled={loading || !file1 || !file2}
               style={{
-                width: "100%", padding: "13px", fontSize: 14, fontWeight: 700, borderRadius: 8, border: "none",
+                width: "100%", padding: "14px", fontSize: 15, fontWeight: 700, borderRadius: 8, border: "none",
                 cursor: (file1 && file2 && !loading) ? "pointer" : "not-allowed",
-                background: (file1 && file2) ? "linear-gradient(135deg, #2563eb, #10b981)" : "#1e2e3e",
-                color: (file1 && file2) ? "#fff" : "#445", opacity: loading ? 0.6 : 1,
+                background: (file1 && file2) ? TY.orange : TY.border,
+                color: (file1 && file2) ? TY.white : TY.textLight,
+                opacity: loading ? 0.6 : 1, transition: "all 0.2s",
+                boxShadow: (file1 && file2) ? "0 2px 8px rgba(242,104,42,0.3)" : "none",
               }}>
               {loading ? "Processing..." : "Generate Reports"}
             </button>
+
             {debugInfo && (
               <details style={{ marginTop: 14 }}>
-                <summary style={{ fontSize: 11, color: "#556", cursor: "pointer" }}>Processing details</summary>
-                <pre style={{ fontSize: 10, color: "#7a92a8", background: "#0d1520", padding: 10, borderRadius: 6, whiteSpace: "pre-wrap", marginTop: 6 }}>{debugInfo}</pre>
+                <summary style={{ fontSize: 11, color: TY.textLight, cursor: "pointer" }}>Processing details</summary>
+                <pre style={{ fontSize: 10, color: TY.textLight, background: TY.lightGray, padding: 10, borderRadius: 6, whiteSpace: "pre-wrap", marginTop: 6, border: `1px solid ${TY.border}` }}>{debugInfo}</pre>
               </details>
             )}
           </div>
         </div>
       )}
 
+      {/* Results */}
       {matrixData && (
         <div style={{ padding: "0 20px 40px" }}>
-          <div style={{ maxWidth: 1150, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 0 0", flexWrap: "wrap", gap: 8 }}>
+          <div style={{ maxWidth: 1150, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 0 0", flexWrap: "wrap", gap: 8 }}>
             <div style={{ display: "flex", gap: 4 }}>
               <button onClick={() => setActiveTab("matrix")} style={tabStyle(activeTab === "matrix")}>Impact Matrix</button>
               <button onClick={() => setActiveTab("opportunities")} style={tabStyle(activeTab === "opportunities")}>Opportunities Chart</button>
               <button onClick={() => setActiveTab("programs")} style={tabStyle(activeTab === "programs")}>Program Details</button>
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <button onClick={exportPNG} disabled={exporting} style={{
-                padding: "7px 16px", fontSize: 11, fontWeight: 600, borderRadius: 5,
-                border: "1px solid #2563eb", background: "#2563eb22", color: "#60a5fa", cursor: "pointer",
-                opacity: exporting ? 0.5 : 1, display: "flex", alignItems: "center", gap: 5,
-              }}>{exporting ? "Exporting..." : "Export PNG"}</button>
-              <button onClick={exportPDF} disabled={exporting} style={{
-                padding: "7px 16px", fontSize: 11, fontWeight: 600, borderRadius: 5,
-                border: "1px solid #10b981", background: "#10b98122", color: "#34d399", cursor: "pointer",
-                opacity: exporting ? 0.5 : 1, display: "flex", alignItems: "center", gap: 5,
-              }}>{exporting ? "Exporting..." : "Export PDF"}</button>
-              <button onClick={exportExcel} disabled={exporting} style={{
-                padding: "7px 16px", fontSize: 11, fontWeight: 600, borderRadius: 5,
-                border: "1px solid #f59e0b", background: "#f59e0b22", color: "#fbbf24", cursor: "pointer",
-                opacity: exporting ? 0.5 : 1, display: "flex", alignItems: "center", gap: 5,
-              }}>{exporting ? "Exporting..." : "Export Excel"}</button>
-              <button onClick={reset} style={{
-                padding: "7px 16px", fontSize: 11, fontWeight: 600, borderRadius: 5,
-                border: "1px solid #2a3a4a", background: "#162231", color: "#7a92a8", cursor: "pointer",
-              }}>← Upload New Files</button>
+              <button onClick={exportPNG} disabled={exporting} style={btnStyle(TY.blue)}>{exporting ? "..." : "Export PNG"}</button>
+              <button onClick={exportPDF} disabled={exporting} style={btnStyle(TY.green)}>{exporting ? "..." : "Export PDF"}</button>
+              <button onClick={exportExcel} disabled={exporting} style={btnStyle(TY.orange)}>{exporting ? "..." : "Export Excel"}</button>
+              <button onClick={reset} style={{ padding: "8px 18px", fontSize: 12, fontWeight: 600, borderRadius: 6, border: `1px solid ${TY.border}`, background: TY.white, color: TY.textLight, cursor: "pointer" }}>← New Files</button>
             </div>
           </div>
 
           <div style={{ marginTop: 12 }}>
             {activeTab === "matrix" && (
-              <div ref={matrixRef} style={{ background: "#fff", borderRadius: 10, color: "#111", maxWidth: 1150, margin: "0 auto", padding: 16, overflow: "auto" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
+              <div ref={matrixRef} style={{ background: TY.white, borderRadius: 8, color: TY.text, maxWidth: 1150, margin: "0 auto", padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
                   <div>
-                    <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#111" }}>{entityName || "Impact Matrix"}</h2>
-                    <div style={{ fontSize: 10, color: "#666", marginTop: 2, lineHeight: 1.5 }}>
+                    <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: TY.navy }}>{entityName || "Impact Matrix"}</h2>
+                    <div style={{ fontSize: 11, color: TY.textLight, marginTop: 3, lineHeight: 1.5 }}>
                       <strong>Impact vs Cost</strong> perspective (Bang for the Buck - primary axes)<br />
                       — with subset dimensions of <strong>Mandate vs Reliance</strong> (span of control dimensions)
                     </div>
                   </div>
-                  <div style={{ textAlign: "right", fontSize: 10.5, color: "#444" }}>
-                    <div><strong>{matrixData.totalPrograms}</strong> programs under review</div>
-                    <div><strong>{fmt$(matrixData.totalInvestment)}</strong> costs of programs under review</div>
-                    <div style={{ fontSize: 9, color: "#999", marginTop: 1 }}>NOTE: program costs are draft level, in progress (current stage), incomplete</div>
+                  <div style={{ textAlign: "right", fontSize: 11, color: TY.textLight }}>
+                    <div><strong style={{ color: TY.text }}>{matrixData.totalPrograms}</strong> programs under review</div>
+                    <div><strong style={{ color: TY.text }}>{fmt$(matrixData.totalInvestment)}</strong> total subsidized cost</div>
+                    <div style={{ fontSize: 9, color: "#999", marginTop: 2 }}>Subsidized Cost = Total Cost - Revenue</div>
                   </div>
                 </div>
 
                 <div style={{ display: "flex", gap: 0 }}>
-                  <div style={{
-                    position: "relative", minWidth: 28, padding: "0 4px",
-                  }}><div style={{
-                    position: "absolute", top: "50%", left: "50%",
-                    transform: "translate(-50%, -50%) rotate(-90deg)",
-                    fontSize: 15, fontWeight: 900, color: "#1a4d80", letterSpacing: 3,
-                    whiteSpace: "nowrap",
-                  }}>IMPACT &gt;&gt;&gt;</div></div>
-
+                  <div style={{ position: "relative", minWidth: 28, padding: "0 4px" }}>
+                    <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%) rotate(-90deg)", fontSize: 15, fontWeight: 900, color: TY.navy, letterSpacing: 3, whiteSpace: "nowrap" }}>IMPACT &gt;&gt;&gt;</div>
+                  </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "grid", gridTemplateColumns: "20px 1fr 1fr", gap: 8, marginBottom: 2 }}>
                       <div />
-                      <div style={{ fontSize: 8, textAlign: "center", color: "#888", fontWeight: 600 }}>Lower Cost</div>
-                      <div style={{ fontSize: 8, textAlign: "center", color: "#888", fontWeight: 600 }}>Higher Cost</div>
+                      <div style={{ fontSize: 9, textAlign: "center", color: TY.textLight, fontWeight: 600 }}>Lower Cost</div>
+                      <div style={{ fontSize: 9, textAlign: "center", color: TY.textLight, fontWeight: 600 }}>Higher Cost</div>
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "20px 1fr 1fr", gap: 8, marginBottom: 6 }}>
-                      <div style={{ position: "relative", width: 20 }}><div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%) rotate(-90deg)", fontSize: 9, fontWeight: 700, color: "#278c5a", whiteSpace: "nowrap" }}>Higher Impact</div></div>
+                      <div style={{ position: "relative", width: 20 }}><div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%) rotate(-90deg)", fontSize: 9, fontWeight: 700, color: TY.green, whiteSpace: "nowrap" }}>Higher Impact</div></div>
                       <QuadrantBox title="High Impact, Low Cost" titleColor={Q.hiLo.title} bgColor={Q.hiLo.bg} borderColor={Q.hiLo.border}
                         codes={["LHLH", "LHHH", "LHLL", "LHHL"]} dataByCode={matrixData.byCode} rankData={matrixData.rankData} />
                       <QuadrantBox title="High Impact, High Cost" titleColor={Q.hiHi.title} bgColor={Q.hiHi.bg} borderColor={Q.hiHi.border}
                         codes={["HHLH", "HHHH", "HHLL", "HHHL"]} dataByCode={matrixData.byCode} rankData={matrixData.rankData} />
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "20px 1fr 1fr", gap: 8 }}>
-                      <div style={{ position: "relative", width: 20 }}><div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%) rotate(-90deg)", fontSize: 9, fontWeight: 700, color: "#b8870a", whiteSpace: "nowrap" }}>Lower Impact</div></div>
+                      <div style={{ position: "relative", width: 20 }}><div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%) rotate(-90deg)", fontSize: 9, fontWeight: 700, color: TY.yellow, whiteSpace: "nowrap" }}>Lower Impact</div></div>
                       <QuadrantBox title="Low Impact, Low Cost" titleColor={Q.loLo.title} bgColor={Q.loLo.bg} borderColor={Q.loLo.border}
                         codes={["LLLH", "LLHH", "LLLL", "LLHL"]} dataByCode={matrixData.byCode} rankData={matrixData.rankData} />
                       <QuadrantBox title="Low Impact, High Cost" titleColor={Q.loHi.title} bgColor={Q.loHi.bg} borderColor={Q.loHi.border}
                         codes={["HLLH", "HLHH", "HLLL", "HLHL"]} dataByCode={matrixData.byCode} rankData={matrixData.rankData} />
                     </div>
-                    <div style={{ textAlign: "center", marginTop: 10, fontSize: 15, fontWeight: 900, color: "#1a4d80", letterSpacing: 3 }}>COST &gt;&gt;&gt;</div>
+                    <div style={{ textAlign: "center", marginTop: 10, fontSize: 15, fontWeight: 900, color: TY.navy, letterSpacing: 3 }}>COST &gt;&gt;&gt;</div>
                   </div>
                 </div>
               </div>
             )}
 
             {activeTab === "opportunities" && (
-              <div ref={opportunitiesRef}>
-                <OpportunitiesChart matrixData={matrixData} entityName={entityName} />
-              </div>
+              <div ref={opportunitiesRef}><OpportunitiesChart matrixData={matrixData} entityName={entityName} /></div>
             )}
 
             {activeTab === "programs" && (
-              <div ref={programsRef}>
-                <ProgramList matrixData={matrixData} entityName={entityName} />
-              </div>
+              <div ref={programsRef}><ProgramList matrixData={matrixData} entityName={entityName} /></div>
             )}
           </div>
         </div>
@@ -782,6 +744,7 @@ function App() {
     </div>
   );
 }
+
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
 </script>
