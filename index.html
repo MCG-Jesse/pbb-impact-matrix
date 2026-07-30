@@ -343,11 +343,33 @@ function App() {
     r.readAsArrayBuffer(file);
   });
 
+  // Column-name aliases. PBB exports have renamed these between versions, so keep
+  // every spelling we have seen. Add new ones here rather than at the call site.
+  const PID_ALIASES = ["program_id", "ProgId", "Program ID", "ProgramId", "Prog Id", "ProgramID"];
+
+  // Returns the matching key from `keys`, or null when nothing matches.
+  // Never fabricates a column name -- a missing column must surface as an error,
+  // not as a silent lookup against a key that does not exist.
   const findCol = (keys, ...searches) => {
     for (const s of searches) { const f = keys.find(k => k.toLowerCase().trim() === s.toLowerCase()); if (f) return f; }
-    for (const s of searches) { const f = keys.find(k => k.toLowerCase().includes(s.toLowerCase())); if (f) return f; }
-    return searches[0];
+    for (const s of searches) { const f = keys.find(k => k.toLowerCase().trim().includes(s.toLowerCase())); if (f) return f; }
+    return null;
   };
+
+  // Same, but throws when the column is required for a correct result.
+  const findRequired = (keys, label, ...searches) => {
+    const f = findCol(keys, ...searches);
+    if (!f) throw new Error(
+      "Could not find the " + label + " column. Looked for: " + searches.join(", ") +
+      ". Columns present: " + keys.join(", ") +
+      ". If the report was renamed, add the new spelling to the alias list."
+    );
+    return f;
+  };
+
+  // Personnel vs NonPersonnel: exclude the NonPersonnel columns before searching so a
+  // substring match can never land on the wrong one.
+  const personnelKeys = (keys) => keys.filter(k => !/non[\s_-]?personnel/i.test(k));
 
   // Auto-calculate median on File 1 upload
   const handleFile1 = async (e) => {
@@ -363,9 +385,9 @@ function App() {
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = window.XLSX.utils.sheet_to_json(ws, { defval: "" });
       const cols = rows.length > 0 ? Object.keys(rows[0]) : [];
-      const persCol = findCol(cols, "Personnel");
-      const nonpersCol = findCol(cols, "NonPersonnel", "Non-Personnel", "Non Personnel");
-      const revCol = findCol(cols, "Revenue");
+      const persCol = findRequired(personnelKeys(cols), "Personnel", "Personnel", "Personnel Cost");
+      const nonpersCol = findRequired(cols, "NonPersonnel", "NonPersonnel", "Non-Personnel", "Non Personnel");
+      const revCol = findRequired(cols, "Revenue", "Revenue");
 
       const subsidizedCosts = [];
       rows.forEach((row) => {
@@ -387,6 +409,9 @@ function App() {
       }
     } catch (err) {
       console.error("Median calculation error:", err);
+      setCostThreshold("");
+      setMedianNote("");
+      setError("Could not auto-calculate the cost threshold from this file: " + err.message);
     }
   };
 
@@ -456,22 +481,26 @@ function App() {
       const cols1 = rows1.length > 0 ? Object.keys(rows1[0]) : [];
       const cols2 = rows2.length > 0 ? Object.keys(rows2[0]) : [];
 
-      const pidCol1 = findCol(cols1, "program_id");
-      const persCol = findCol(cols1, "Personnel");
-      const nonpersCol = findCol(cols1, "NonPersonnel", "Non-Personnel", "Non Personnel");
-      const quartCol = findCol(cols1, "Quartile", "FinalQuartile", "Final Quartile");
-      const progCol = findCol(cols1, "Program or Service", "Program");
+      const pidCol1 = findRequired(cols1, "program id (File 1)", ...PID_ALIASES);
+      const persCol = findRequired(personnelKeys(cols1), "Personnel", "Personnel", "Personnel Cost");
+      const nonpersCol = findRequired(cols1, "NonPersonnel", "NonPersonnel", "Non-Personnel", "Non Personnel");
+      const quartCol = findRequired(cols1, "Quartile", "Quartile", "FinalQuartile", "Final Quartile");
+      const progCol = findRequired(cols1, "Program name", "Program or Service", "Program");
       const descCol = findCol(cols1, "Program or Service Description", "Program Description", "Description");
-      const revCol = findCol(cols1, "Revenue");
+      const revCol = findRequired(cols1, "Revenue", "Revenue");
 
-      const pidCol2 = findCol(cols2, "program_id");
-      const abbrCol = findCol(cols2, "Result Abbr", "Priority Abbr");
-      const scoreCol2 = findCol(cols2, "Final Score");
+      const pidCol2 = findRequired(cols2, "program id (File 2)", ...PID_ALIASES);
+      const abbrCol = findRequired(cols2, "Result Abbr", "Result Abbr", "Priority Abbr", "Result Abbreviation");
+      const scoreCol2 = findRequired(cols2, "Final Score", "Final Score", "Score");
       const descCol2 = findCol(cols2, "Program or Service Description", "Program Description", "Description");
 
-      const hasDescInFile1 = cols1.some(c => c.toLowerCase().includes("description"));
+      const hasDescInFile1 = !!descCol;
       debug.push("File 1 cols: " + cols1.join(", "));
       debug.push("File 2 cols: " + cols2.join(", "));
+      debug.push("Resolved File 1 -> id: " + pidCol1 + " | personnel: " + persCol +
+                 " | nonpersonnel: " + nonpersCol + " | quartile: " + quartCol +
+                 " | program: " + progCol + " | revenue: " + revCol);
+      debug.push("Resolved File 2 -> id: " + pidCol2 + " | abbr: " + abbrCol + " | score: " + scoreCol2);
 
       const mandateScores = {}, relianceScores = {}, descriptionsFromFile2 = {};
       rows2.forEach((row) => {
@@ -479,12 +508,25 @@ function App() {
         const abbr = String(row[abbrCol]).trim();
         const score = parseFloat(row[scoreCol2]) || 0;
         if (!pid || pid === "undefined") return;
-        if (abbr === "Mandate") mandateScores[pid] = (mandateScores[pid] || 0) + score;
-        else if (abbr === "Reliance") relianceScores[pid] = (relianceScores[pid] || 0) + score;
+        // Max, not sum: one criterion score per program. Summing would double-count if the
+        // report ever emits duplicate rows and could push a program over the > 2 cut.
+        if (abbr === "Mandate") mandateScores[pid] = Math.max(mandateScores[pid] || 0, score);
+        else if (abbr === "Reliance") relianceScores[pid] = Math.max(relianceScores[pid] || 0, score);
         if (!descriptionsFromFile2[pid]) { const d = String(row[descCol2] || "").trim(); if (d) descriptionsFromFile2[pid] = d; }
       });
 
       debug.push("Mandate scores: " + Object.keys(mandateScores).length + ", Reliance: " + Object.keys(relianceScores).length);
+
+      // A join that produced nothing means the mandate and reliance axes would silently
+      // collapse to Low/No for every program. Refuse to draw rather than ship 4 of 16 cells.
+      if (Object.keys(mandateScores).length === 0 || Object.keys(relianceScores).length === 0) {
+        throw new Error(
+          "No Mandate/Reliance scores matched between the two files (mandate: " +
+          Object.keys(mandateScores).length + ", reliance: " + Object.keys(relianceScores).length +
+          "). Check that '" + pidCol1 + "' in File 1 and '" + pidCol2 + "' in File 2 hold the same ids, " +
+          "and that File 2 tab 2 uses 'Mandate' and 'Reliance' in its '" + abbrCol + "' column."
+        );
+      }
 
       const quartileValues = new Set();
       rows1.slice(0, 20).forEach(r => { const v = r[quartCol]; if (v !== "" && v != null) quartileValues.add(String(v).trim()); });
@@ -492,9 +534,16 @@ function App() {
       debug.push("Sample quartiles: " + sampleQ.join(", "));
       const isNumericQuartile = sampleQ.every(v => !isNaN(parseFloat(v)));
 
-      const threshold = parseFloat(costThreshold) || 445000;
+      // No default. A silent fallback here would apply one client's threshold to another.
+      const threshold = parseFloat(costThreshold);
+      if (!isFinite(threshold) || threshold <= 0) {
+        throw new Error("Cost threshold is not set. It is normally auto-calculated as the median " +
+                        "of programs with positive subsidized cost when File 1 is uploaded; " +
+                        "re-upload File 1 or enter a threshold manually.");
+      }
       debug.push("Cost threshold: " + fmt$(threshold));
       const programs = [];
+      let unmatchedPids = 0;
 
       rows1.forEach((row) => {
         const pid = String(row[pidCol1]).trim();
@@ -504,10 +553,13 @@ function App() {
         const revenue = parseFloat(row[revCol]) || 0;
         const subsidizedCost = totalCost - revenue;
         const quartile = String(row[quartCol]).trim();
+        const hasScores = Object.prototype.hasOwnProperty.call(mandateScores, pid) ||
+                          Object.prototype.hasOwnProperty.call(relianceScores, pid);
         const mScore = mandateScores[pid] || 0;
         const rScore = relianceScores[pid] || 0;
 
         if (totalCost === 0) return;
+        if (!hasScores) unmatchedPids++;
 
         // Use subsidized cost for classification
         const costHL = subsidizedCost > threshold ? "H" : "L";
@@ -525,6 +577,10 @@ function App() {
       });
 
       debug.push("Classified: " + programs.length + " programs");
+      if (unmatchedPids > 0) {
+        debug.push("WARNING: " + unmatchedPids + " of " + programs.length +
+                   " programs had no Mandate/Reliance score match and defaulted to Low/No on both axes.");
+      }
       if (programs.length === 0) throw new Error("No programs classified.");
 
       // Aggregate — use subsidized cost (capped at 0) for investment display
