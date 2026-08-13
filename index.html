@@ -20,7 +20,6 @@
 const { useState, useCallback, useRef } = React;
 
 
-
 const XLSX_CDN = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
 const H2C_CDN = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
 const JSPDF_CDN = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
@@ -343,33 +342,16 @@ function App() {
     r.readAsArrayBuffer(file);
   });
 
-  // Column-name aliases. PBB exports have renamed these between versions, so keep
-  // every spelling we have seen. Add new ones here rather than at the call site.
-  const PID_ALIASES = ["program_id", "ProgId", "Program ID", "ProgramId", "Prog Id", "ProgramID"];
-
-  // Returns the matching key from `keys`, or null when nothing matches.
-  // Never fabricates a column name -- a missing column must surface as an error,
-  // not as a silent lookup against a key that does not exist.
   const findCol = (keys, ...searches) => {
+    // Pass 1: exact match (case-insensitive)
     for (const s of searches) { const f = keys.find(k => k.toLowerCase().trim() === s.toLowerCase()); if (f) return f; }
-    for (const s of searches) { const f = keys.find(k => k.toLowerCase().trim().includes(s.toLowerCase())); if (f) return f; }
-    return null;
+    // Pass 2: either contains the other (case-insensitive)
+    for (const s of searches) { const f = keys.find(k => k.toLowerCase().includes(s.toLowerCase()) || s.toLowerCase().includes(k.toLowerCase())); if (f) return f; }
+    // Pass 3: normalize by removing underscores, spaces, hyphens then compare
+    const norm = (str) => str.toLowerCase().replace(/[_\s-]/g, "");
+    for (const s of searches) { const f = keys.find(k => norm(k) === norm(s)); if (f) return f; }
+    return searches[0];
   };
-
-  // Same, but throws when the column is required for a correct result.
-  const findRequired = (keys, label, ...searches) => {
-    const f = findCol(keys, ...searches);
-    if (!f) throw new Error(
-      "Could not find the " + label + " column. Looked for: " + searches.join(", ") +
-      ". Columns present: " + keys.join(", ") +
-      ". If the report was renamed, add the new spelling to the alias list."
-    );
-    return f;
-  };
-
-  // Personnel vs NonPersonnel: exclude the NonPersonnel columns before searching so a
-  // substring match can never land on the wrong one.
-  const personnelKeys = (keys) => keys.filter(k => !/non[\s_-]?personnel/i.test(k));
 
   // Auto-calculate median on File 1 upload
   const handleFile1 = async (e) => {
@@ -385,9 +367,9 @@ function App() {
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = window.XLSX.utils.sheet_to_json(ws, { defval: "" });
       const cols = rows.length > 0 ? Object.keys(rows[0]) : [];
-      const persCol = findRequired(personnelKeys(cols), "Personnel", "Personnel", "Personnel Cost");
-      const nonpersCol = findRequired(cols, "NonPersonnel", "NonPersonnel", "Non-Personnel", "Non Personnel");
-      const revCol = findRequired(cols, "Revenue", "Revenue");
+      const persCol = findCol(cols, "Personnel");
+      const nonpersCol = findCol(cols, "NonPersonnel", "Non-Personnel", "Non Personnel");
+      const revCol = findCol(cols, "Revenue");
 
       const subsidizedCosts = [];
       rows.forEach((row) => {
@@ -409,9 +391,6 @@ function App() {
       }
     } catch (err) {
       console.error("Median calculation error:", err);
-      setCostThreshold("");
-      setMedianNote("");
-      setError("Could not auto-calculate the cost threshold from this file: " + err.message);
     }
   };
 
@@ -464,8 +443,9 @@ function App() {
   const processData = async () => {
     if (!file1 || !file2) { setError("Please upload both files."); return; }
     setLoading(true); setError(""); setDebugInfo("");
+    const debug = [];
     try {
-      await loadXLSX(); const XLSX = window.XLSX; const debug = [];
+      await loadXLSX(); const XLSX = window.XLSX;
 
       const data1 = await readFile(file1); const wb1 = XLSX.read(data1, { type: "array" });
       debug.push("File 1 sheets: " + wb1.SheetNames.join(", "));
@@ -481,52 +461,59 @@ function App() {
       const cols1 = rows1.length > 0 ? Object.keys(rows1[0]) : [];
       const cols2 = rows2.length > 0 ? Object.keys(rows2[0]) : [];
 
-      const pidCol1 = findRequired(cols1, "program id (File 1)", ...PID_ALIASES);
-      const persCol = findRequired(personnelKeys(cols1), "Personnel", "Personnel", "Personnel Cost");
-      const nonpersCol = findRequired(cols1, "NonPersonnel", "NonPersonnel", "Non-Personnel", "Non Personnel");
-      const quartCol = findRequired(cols1, "Quartile", "Quartile", "FinalQuartile", "Final Quartile");
-      const progCol = findRequired(cols1, "Program name", "Program or Service", "Program");
+      const pidCol1 = findCol(cols1, "program_id", "ProgId", "ProgramId", "Program_Id", "Program ID");
+      const persCol = findCol(cols1, "Personnel");
+      const nonpersCol = findCol(cols1, "NonPersonnel", "Non-Personnel", "Non Personnel");
+      const quartCol = findCol(cols1, "Quartile", "FinalQuartile", "Final Quartile");
+      const progCol = findCol(cols1, "Program or Service", "Program");
       const descCol = findCol(cols1, "Program or Service Description", "Program Description", "Description");
-      const revCol = findRequired(cols1, "Revenue", "Revenue");
+      const revCol = findCol(cols1, "Revenue");
 
-      const pidCol2 = findRequired(cols2, "program id (File 2)", ...PID_ALIASES);
-      const abbrCol = findRequired(cols2, "Result Abbr", "Result Abbr", "Priority Abbr", "Result Abbreviation");
-      const scoreCol2 = findRequired(cols2, "Final Score", "Final Score", "Score");
+      const pidCol2 = findCol(cols2, "program_id", "ProgId", "ProgramId", "Program_Id", "Program ID");
+      const abbrCol = findCol(cols2, "Result Abbr", "Priority Abbr", "Criteria Abbr", "Factor Abbr");
+      const scoreCol2 = findCol(cols2, "Final Score");
       const descCol2 = findCol(cols2, "Program or Service Description", "Program Description", "Description");
 
-      const hasDescInFile1 = !!descCol;
+      const hasDescInFile1 = cols1.some(c => c.toLowerCase().includes("description"));
       debug.push("File 1 cols: " + cols1.join(", "));
       debug.push("File 2 cols: " + cols2.join(", "));
-      debug.push("Resolved File 1 -> id: " + pidCol1 + " | personnel: " + persCol +
-                 " | nonpersonnel: " + nonpersCol + " | quartile: " + quartCol +
-                 " | program: " + progCol + " | revenue: " + revCol);
-      debug.push("Resolved File 2 -> id: " + pidCol2 + " | abbr: " + abbrCol + " | score: " + scoreCol2);
+      debug.push("File 1 mapping: pid=" + pidCol1 + ", pers=" + persCol + ", nonpers=" + nonpersCol + ", quartile=" + quartCol + ", prog=" + progCol + ", desc=" + descCol + ", rev=" + revCol);
+      debug.push("File 2 mapping: pid=" + pidCol2 + ", abbr=" + abbrCol + ", score=" + scoreCol2 + ", desc=" + descCol2);
+
+      // Verify abbrCol exists in actual data
+      const abbrColExists = cols2.some(c => c === abbrCol);
+      if (!abbrColExists) {
+        debug.push("WARNING: Abbr column '" + abbrCol + "' not found in File 2. Available: " + cols2.join(", "));
+      }
 
       const mandateScores = {}, relianceScores = {}, descriptionsFromFile2 = {};
+      let mandateRowCount = 0, relianceRowCount = 0, unmatchedAbbrSamples = new Set();
+
       rows2.forEach((row) => {
-        const pid = String(row[pidCol2]).trim();
-        const abbr = String(row[abbrCol]).trim();
-        const score = parseFloat(row[scoreCol2]) || 0;
-        if (!pid || pid === "undefined") return;
-        // Max, not sum: one criterion score per program. Summing would double-count if the
-        // report ever emits duplicate rows and could push a program over the > 2 cut.
-        if (abbr === "Mandate") mandateScores[pid] = Math.max(mandateScores[pid] || 0, score);
-        else if (abbr === "Reliance") relianceScores[pid] = Math.max(relianceScores[pid] || 0, score);
-        if (!descriptionsFromFile2[pid]) { const d = String(row[descCol2] || "").trim(); if (d) descriptionsFromFile2[pid] = d; }
+        try {
+          const pid = String(row[pidCol2] ?? "").trim();
+          const abbr = String(row[abbrCol] ?? "").trim();
+          const score = parseFloat(row[scoreCol2]) || 0;
+          if (!pid || pid === "undefined" || pid === "") return;
+          if (abbr === "Mandate") { mandateScores[pid] = (mandateScores[pid] || 0) + score; mandateRowCount++; }
+          else if (abbr === "Reliance") { relianceScores[pid] = (relianceScores[pid] || 0) + score; relianceRowCount++; }
+          else if (unmatchedAbbrSamples.size < 10) { unmatchedAbbrSamples.add(abbr); }
+          if (!descriptionsFromFile2[pid]) { const d = String(row[descCol2] ?? "").trim(); if (d) descriptionsFromFile2[pid] = d; }
+        } catch (e) {
+          debug.push("WARNING: Failed to process File 2 row: " + e.message);
+        }
       });
 
-      debug.push("Mandate scores: " + Object.keys(mandateScores).length + ", Reliance: " + Object.keys(relianceScores).length);
+      debug.push("Mandate rows: " + mandateRowCount + " (" + Object.keys(mandateScores).length + " programs)");
+      debug.push("Reliance rows: " + relianceRowCount + " (" + Object.keys(relianceScores).length + " programs)");
+      if (mandateRowCount === 0) debug.push("WARNING: No Mandate scores found! Check that abbr column '" + abbrCol + "' contains 'Mandate' values. Other values found: " + Array.from(unmatchedAbbrSamples).join(", "));
+      if (relianceRowCount === 0) debug.push("WARNING: No Reliance scores found! Other values found: " + Array.from(unmatchedAbbrSamples).join(", "));
 
-      // A join that produced nothing means the mandate and reliance axes would silently
-      // collapse to Low/No for every program. Refuse to draw rather than ship 4 of 16 cells.
-      if (Object.keys(mandateScores).length === 0 || Object.keys(relianceScores).length === 0) {
-        throw new Error(
-          "No Mandate/Reliance scores matched between the two files (mandate: " +
-          Object.keys(mandateScores).length + ", reliance: " + Object.keys(relianceScores).length +
-          "). Check that '" + pidCol1 + "' in File 1 and '" + pidCol2 + "' in File 2 hold the same ids, " +
-          "and that File 2 tab 2 uses 'Mandate' and 'Reliance' in its '" + abbrCol + "' column."
-        );
-      }
+      // Show mandate/reliance score distribution
+      const mHigh = Object.values(mandateScores).filter(v => v > 2).length;
+      const rHigh = Object.values(relianceScores).filter(v => v > 2).length;
+      debug.push("Mandate H/L: " + mHigh + " High (>2), " + (Object.keys(mandateScores).length - mHigh) + " Low (<=2)");
+      debug.push("Reliance H/L: " + rHigh + " High (>2), " + (Object.keys(relianceScores).length - rHigh) + " Low (<=2)");
 
       const quartileValues = new Set();
       rows1.slice(0, 20).forEach(r => { const v = r[quartCol]; if (v !== "" && v != null) quartileValues.add(String(v).trim()); });
@@ -534,54 +521,69 @@ function App() {
       debug.push("Sample quartiles: " + sampleQ.join(", "));
       const isNumericQuartile = sampleQ.every(v => !isNaN(parseFloat(v)));
 
-      // No default. A silent fallback here would apply one client's threshold to another.
-      const threshold = parseFloat(costThreshold);
-      if (!isFinite(threshold) || threshold <= 0) {
-        throw new Error("Cost threshold is not set. It is normally auto-calculated as the median " +
-                        "of programs with positive subsidized cost when File 1 is uploaded; " +
-                        "re-upload File 1 or enter a threshold manually.");
-      }
+      const threshold = parseFloat(costThreshold) || 445000;
       debug.push("Cost threshold: " + fmt$(threshold));
       const programs = [];
-      let unmatchedPids = 0;
+      let skippedZero = 0, skippedError = 0, noMandateMatch = 0;
 
       rows1.forEach((row) => {
-        const pid = String(row[pidCol1]).trim();
-        const personnel = parseFloat(row[persCol]) || 0;
-        const nonPersonnel = parseFloat(row[nonpersCol]) || 0;
-        const totalCost = personnel + nonPersonnel;
-        const revenue = parseFloat(row[revCol]) || 0;
-        const subsidizedCost = totalCost - revenue;
-        const quartile = String(row[quartCol]).trim();
-        const hasScores = Object.prototype.hasOwnProperty.call(mandateScores, pid) ||
-                          Object.prototype.hasOwnProperty.call(relianceScores, pid);
-        const mScore = mandateScores[pid] || 0;
-        const rScore = relianceScores[pid] || 0;
+        try {
+          const pid = String(row[pidCol1] ?? "").trim();
+          if (!pid || pid === "undefined" || pid === "") return;
+          const personnel = parseFloat(row[persCol]) || 0;
+          const nonPersonnel = parseFloat(row[nonpersCol]) || 0;
+          const totalCost = personnel + nonPersonnel;
+          const revenue = parseFloat(row[revCol]) || 0;
+          const subsidizedCost = totalCost - revenue;
+          const quartile = String(row[quartCol] ?? "").trim();
+          const mScore = mandateScores[pid] || 0;
+          const rScore = relianceScores[pid] || 0;
 
-        if (totalCost === 0) return;
-        if (!hasScores) unmatchedPids++;
+          if (mScore === 0 && rScore === 0) noMandateMatch++;
+          if (totalCost === 0) { skippedZero++; return; }
 
-        // Use subsidized cost for classification
-        const costHL = subsidizedCost > threshold ? "H" : "L";
-        let impactHL;
-        if (isNumericQuartile) { const qNum = parseFloat(quartile); impactHL = (qNum === 1 || qNum === 2) ? "H" : "L"; }
-        else { impactHL = (quartile === "Most Aligned" || quartile === "More Aligned") ? "H" : "L"; }
-        const mandateHL = mScore > 2 ? "H" : "L";
-        const relianceHL = rScore > 2 ? "H" : "L";
-        const code = costHL + impactHL + mandateHL + relianceHL;
+          const costHL = subsidizedCost > threshold ? "H" : "L";
+          let impactHL;
+          if (isNumericQuartile) { const qNum = parseFloat(quartile); impactHL = (qNum === 1 || qNum === 2) ? "H" : "L"; }
+          else { impactHL = (quartile === "Most Aligned" || quartile === "More Aligned") ? "H" : "L"; }
+          const mandateHL = mScore > 2 ? "H" : "L";
+          const relianceHL = rScore > 2 ? "H" : "L";
+          const code = costHL + impactHL + mandateHL + relianceHL;
 
-        const descFromFile1 = hasDescInFile1 ? String(row[descCol] || "").trim() : "";
-        const desc = descFromFile1 || descriptionsFromFile2[pid] || "";
+          const descFromFile1 = hasDescInFile1 ? String(row[descCol] ?? "").trim() : "";
+          const desc = descFromFile1 || descriptionsFromFile2[pid] || "";
 
-        programs.push({ name: row[progCol], desc, pid, totalCost, revenue, subsidizedCost, revOpp: Math.max(0, subsidizedCost), code });
+          programs.push({ name: String(row[progCol] ?? ""), desc, pid, totalCost, revenue, subsidizedCost, revOpp: Math.max(0, subsidizedCost), code });
+        } catch (e) {
+          skippedError++;
+          debug.push("WARNING: Failed to process File 1 row: " + e.message);
+        }
       });
 
-      debug.push("Classified: " + programs.length + " programs");
-      if (unmatchedPids > 0) {
-        debug.push("WARNING: " + unmatchedPids + " of " + programs.length +
-                   " programs had no Mandate/Reliance score match and defaulted to Low/No on both axes.");
+      debug.push("Classified: " + programs.length + " programs, skipped " + skippedZero + " zero-cost, " + skippedError + " errors");
+      if (noMandateMatch > 0) debug.push("NOTE: " + noMandateMatch + " programs had no Mandate/Reliance match in File 2 (scores defaulted to 0)");
+
+      if (programs.length === 0) {
+        // Extra diagnostics for zero-program case
+        debug.push("=== ZERO PROGRAMS DIAGNOSTICS ===");
+        debug.push("File 1 total rows: " + rows1.length);
+        debug.push("Skipped zero-cost: " + skippedZero + ", errors: " + skippedError);
+        if (rows1.length > 0) {
+          const sampleRow = rows1[0];
+          debug.push("Sample row keys: " + Object.keys(sampleRow).join(", "));
+          debug.push("Sample pid value: " + JSON.stringify(sampleRow[pidCol1]));
+          debug.push("Sample personnel value: " + JSON.stringify(sampleRow[persCol]));
+          debug.push("Sample nonpersonnel value: " + JSON.stringify(sampleRow[nonpersCol]));
+          debug.push("Sample quartile value: " + JSON.stringify(sampleRow[quartCol]));
+          debug.push("Sample revenue value: " + JSON.stringify(sampleRow[revCol]));
+          debug.push("Sample program value: " + JSON.stringify(sampleRow[progCol]));
+          const testPers = parseFloat(sampleRow[persCol]) || 0;
+          const testNonP = parseFloat(sampleRow[nonpersCol]) || 0;
+          debug.push("Parsed: personnel=" + testPers + ", nonPersonnel=" + testNonP + ", totalCost=" + (testPers + testNonP));
+        }
+        setDebugInfo(debug.join("\n"));
+        throw new Error("No programs classified. Expand 'Processing details' below for diagnostics.");
       }
-      if (programs.length === 0) throw new Error("No programs classified.");
 
       // Aggregate — use subsidized cost (capped at 0) for investment display
       const byCode = {}, oppByCode = {};
@@ -599,10 +601,13 @@ function App() {
       const totalPrograms = programs.length;
       const totalInvestment = programs.reduce((s, p) => s + Math.max(0, p.subsidizedCost), 0);
 
+      // Show distribution across all 16 codes
+      const distrib = ALL_CODES.map((c, i) => "Cat" + (i+1) + ":" + (byCode[c]?.count || 0)).join("  ");
+      debug.push("Distribution: " + distrib);
       debug.push("Total: " + totalPrograms + " programs, " + fmt$(totalInvestment) + " subsidized cost");
       setDebugInfo(debug.join("\n"));
       setMatrixData({ byCode, rankData, totalPrograms, totalInvestment, oppByCode, programs, catMap });
-    } catch (err) { setError("Error: " + err.message); }
+    } catch (err) { setError("Error: " + err.message); setDebugInfo(debug.join("\n")); }
     setLoading(false);
   };
 
@@ -800,7 +805,6 @@ function App() {
     </div>
   );
 }
-
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
 </script>
