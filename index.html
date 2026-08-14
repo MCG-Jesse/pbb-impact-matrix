@@ -239,22 +239,40 @@ function ProgramList({ matrixData, entityName }) {
 
   const handleSort = (col) => { if (sortCol === col) setSortAsc(!sortAsc); else { setSortCol(col); setSortAsc(true); } };
 
-  const enriched = programs.map(p => ({ ...p, cat: catMap[p.code] || 0 }));
+  const enriched = programs.map(p => ({ ...p, cat: catMap[p.code] || 0, catName: CODE_DESCRIPTIONS[p.code] || "" }));
   const filtered = filterCat === "all" ? enriched : enriched.filter(p => String(p.cat) === filterCat);
   const sorted = [...filtered].sort((a, b) => {
     let cmp = 0;
     if (sortCol === "name") cmp = (a.name || "").localeCompare(b.name || "");
+    else if (sortCol === "dept") cmp = (a.dept || "").localeCompare(b.dept || "");
     else if (sortCol === "cost") cmp = a.subsidizedCost - b.subsidizedCost;
     else if (sortCol === "cat") cmp = a.cat - b.cat;
+    else if (sortCol === "impact") cmp = (a.impactHL || "").localeCompare(b.impactHL || "");
+    else if (sortCol === "costHL") cmp = (a.costHL || "").localeCompare(b.costHL || "");
+    else if (sortCol === "mandate") cmp = (a.mandateHL || "").localeCompare(b.mandateHL || "");
+    else if (sortCol === "reliance") cmp = (a.relianceHL || "").localeCompare(b.relianceHL || "");
     return sortAsc ? cmp : -cmp;
   });
 
   const arrow = (col) => sortCol === col ? (sortAsc ? " ▲" : " ▼") : "";
-  const thStyle = { padding: "10px 12px", textAlign: "left", fontWeight: 700, cursor: "pointer", borderRight: "1px solid #1a5a7a", userSelect: "none" };
+  const thStyle = { padding: "8px 10px", textAlign: "left", fontWeight: 700, cursor: "pointer", borderRight: "1px solid #1a5a7a", userSelect: "none", fontSize: 11 };
+  const tdStyle = { padding: "8px 10px", borderRight: `1px solid ${TY.border}`, fontSize: 11 };
   const cats = [...new Set(enriched.map(p => p.cat))].sort((a, b) => a - b);
 
+  const hlBadge = (val) => {
+    const isHigh = val === "H";
+    return (
+      <span style={{
+        display: "inline-block", padding: "2px 10px", borderRadius: 3, fontSize: 11, fontWeight: 700,
+        background: isHigh ? "#e6eef8" : "#f7f9fb",
+        color: isHigh ? TY.navy : TY.textLight,
+        border: `1px solid ${isHigh ? TY.blue + "44" : TY.border}`,
+      }}>{val}</span>
+    );
+  };
+
   return (
-    <div style={{ background: TY.white, borderRadius: 8, color: TY.text, maxWidth: 1150, margin: "0 auto", padding: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
+    <div style={{ background: TY.white, borderRadius: 8, color: TY.text, maxWidth: 1250, margin: "0 auto", padding: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
         <div>
           <h2 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 800, color: TY.navy }}>{entityName ? `${entityName} — ` : ""}Program Details</h2>
@@ -272,26 +290,36 @@ function ProgramList({ matrixData, entityName }) {
           </select>
         </div>
       </div>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-        <thead>
-          <tr style={{ background: TY.navy, color: TY.white }}>
-            <th style={{ ...thStyle, width: 70, textAlign: "center" }} onClick={() => handleSort("cat")}>{"Cat" + arrow("cat")}</th>
-            <th style={{ ...thStyle, width: 200 }} onClick={() => handleSort("name")}>{"Program" + arrow("name")}</th>
-            <th style={thStyle}>Description</th>
-            <th style={{ ...thStyle, width: 150, textAlign: "right", borderRight: "none" }} onClick={() => handleSort("cost")}>{"Subsidized Cost" + arrow("cost")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((p, i) => (
-            <tr key={p.pid + "-" + i} style={{ background: i % 2 === 0 ? "#f7f9fb" : TY.white, borderBottom: `1px solid ${TY.border}` }}>
-              <td style={{ padding: "10px 12px", textAlign: "center", fontWeight: 700, fontSize: 13, color: TY.navy, borderRight: `1px solid ${TY.border}` }}>{p.cat}</td>
-              <td style={{ padding: "10px 12px", color: TY.text, fontWeight: 600, borderRight: `1px solid ${TY.border}` }}>{p.name}</td>
-              <td style={{ padding: "10px 12px", color: TY.textLight, lineHeight: 1.4, borderRight: `1px solid ${TY.border}`, fontSize: 11 }}>{p.desc}</td>
-              <td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600, color: TY.text }}>{fmt$(p.subsidizedCost)}</td>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 900 }}>
+          <thead>
+            <tr style={{ background: TY.navy, color: TY.white }}>
+              <th style={{ ...thStyle, width: 180 }} onClick={() => handleSort("name")}>{"Program" + arrow("name")}</th>
+              <th style={{ ...thStyle, width: 140 }} onClick={() => handleSort("dept")}>{"Department" + arrow("dept")}</th>
+              <th style={{ ...thStyle, width: 50, textAlign: "center" }} onClick={() => handleSort("cat")}>{"Cat" + arrow("cat")}</th>
+              <th style={thStyle}>Category Name</th>
+              <th style={{ ...thStyle, width: 55, textAlign: "center" }} onClick={() => handleSort("impact")}>{"Impact" + arrow("impact")}</th>
+              <th style={{ ...thStyle, width: 50, textAlign: "center" }} onClick={() => handleSort("costHL")}>{"Cost" + arrow("costHL")}</th>
+              <th style={{ ...thStyle, width: 65, textAlign: "center" }} onClick={() => handleSort("mandate")}>{"Mandate" + arrow("mandate")}</th>
+              <th style={{ ...thStyle, width: 65, textAlign: "center", borderRight: "none" }} onClick={() => handleSort("reliance")}>{"Reliance" + arrow("reliance")}</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {sorted.map((p, i) => (
+              <tr key={p.pid + "-" + i} style={{ background: i % 2 === 0 ? "#f7f9fb" : TY.white, borderBottom: `1px solid ${TY.border}` }}>
+                <td style={{ ...tdStyle, color: TY.text, fontWeight: 600 }}>{p.name}</td>
+                <td style={{ ...tdStyle, color: TY.textLight }}>{p.dept}</td>
+                <td style={{ ...tdStyle, textAlign: "center", fontWeight: 700, fontSize: 13, color: TY.navy }}>{p.cat}</td>
+                <td style={{ ...tdStyle, color: TY.textLight, fontSize: 10 }}>{p.catName}</td>
+                <td style={{ ...tdStyle, textAlign: "center" }}>{hlBadge(p.impactHL)}</td>
+                <td style={{ ...tdStyle, textAlign: "center" }}>{hlBadge(p.costHL)}</td>
+                <td style={{ ...tdStyle, textAlign: "center" }}>{hlBadge(p.mandateHL)}</td>
+                <td style={{ ...tdStyle, textAlign: "center", borderRight: "none" }}>{hlBadge(p.relianceHL)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -432,8 +460,8 @@ function App() {
         const rows = ALL_CODES.map((code, i) => { const opp = matrixData.oppByCode[code]||0; const [pL,pH] = RANGE_PCT[code]; return { Category: i+1, Description: CODE_DESCRIPTIONS[code], Opportunities: OPPORTUNITY_TEXT[code], "Savings Low": opp*pL, "Savings High": opp*pH }; });
         const ws = X.utils.json_to_sheet(rows); ws["!cols"] = [{wch:10},{wch:50},{wch:60},{wch:16},{wch:16}]; X.utils.book_append_sheet(wb, ws, "Opportunities");
       } else if (activeTab === "programs") {
-        const rows = matrixData.programs.map(p => ({ Category: matrixData.catMap[p.code]||0, Program: p.name, Description: p.desc, "Subsidized Cost": Math.max(0, p.subsidizedCost), "Category Description": CODE_DESCRIPTIONS[p.code]||"" })).sort((a,b) => a.Category - b.Category);
-        const ws = X.utils.json_to_sheet(rows); ws["!cols"] = [{wch:10},{wch:30},{wch:60},{wch:18},{wch:50}]; X.utils.book_append_sheet(wb, ws, "Program Details");
+        const rows = matrixData.programs.map(p => ({ Program: p.name, Department: p.dept, Category: matrixData.catMap[p.code]||0, "Category Name": CODE_DESCRIPTIONS[p.code]||"", Impact: p.impactHL, Cost: p.costHL, Mandate: p.mandateHL, Reliance: p.relianceHL })).sort((a,b) => a.Category - b.Category);
+        const ws = X.utils.json_to_sheet(rows); ws["!cols"] = [{wch:30},{wch:20},{wch:10},{wch:50},{wch:8},{wch:8},{wch:10},{wch:10}]; X.utils.book_append_sheet(wb, ws, "Program Details");
       }
       X.writeFile(wb, getFileName() + ".xlsx");
     } catch (err) { console.error(err); }
@@ -466,6 +494,7 @@ function App() {
       const nonpersCol = findCol(cols1, "NonPersonnel", "Non-Personnel", "Non Personnel");
       const quartCol = findCol(cols1, "Quartile", "FinalQuartile", "Final Quartile");
       const progCol = findCol(cols1, "Program or Service", "Program");
+      const deptCol = findCol(cols1, "User Group", "Department", "Dept");
       const descCol = findCol(cols1, "Program or Service Description", "Program Description", "Description");
       const revCol = findCol(cols1, "Revenue");
 
@@ -552,8 +581,9 @@ function App() {
 
           const descFromFile1 = hasDescInFile1 ? String(row[descCol] ?? "").trim() : "";
           const desc = descFromFile1 || descriptionsFromFile2[pid] || "";
+          const dept = String(row[deptCol] ?? "").trim();
 
-          programs.push({ name: String(row[progCol] ?? ""), desc, pid, totalCost, revenue, subsidizedCost, revOpp: Math.max(0, subsidizedCost), code });
+          programs.push({ name: String(row[progCol] ?? ""), desc, dept, pid, totalCost, revenue, subsidizedCost, revOpp: Math.max(0, subsidizedCost), code, impactHL, costHL, mandateHL, relianceHL });
         } catch (e) {
           skippedError++;
           debug.push("WARNING: Failed to process File 1 row: " + e.message);
